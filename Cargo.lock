@@ -457,8 +457,7 @@ dependencies = [
 [[package]]
 name = "cw-orch"
 version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8dfac153484bf23219876a12d38a0dd45f627641a70bd7926ebbe1d2f00debc"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#84a6fea4286423e702efad05cdbffc6552c7ff3e"
 dependencies = [
  "abstract-cw-multi-test",
  "anyhow",
@@ -480,8 +479,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-contract-derive"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "152f88fea80008fc9a214ee133c6b539e30a8d0dce56d03e61965c8dc746aa20"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#84a6fea4286423e702efad05cdbffc6552c7ff3e"
 dependencies = [
  "convert_case",
  "quote",
@@ -491,8 +489,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-core"
 version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90742906d091e509f185bb26c07706c037949ddaaa522bb3f3927b53835cc1fd"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#84a6fea4286423e702efad05cdbffc6552c7ff3e"
 dependencies = [
  "abstract-cw-multi-test",
  "anyhow",
@@ -509,8 +506,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-fns-derive"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "650dd1b708742406023b51e1b49a83a91ba31f8dd653c5b6cc7d3c3c0c214bfd"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#84a6fea4286423e702efad05cdbffc6552c7ff3e"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -521,8 +517,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-mock"
 version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21eb2fbab0c10b1955226871d2f1e7a20cd2066c589ceb2da88b0e45bdca6999"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#84a6fea4286423e702efad05cdbffc6552c7ff3e"
 dependencies = [
  "abstract-cw-multi-test",
  "cosmwasm-std",
@@ -534,8 +529,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-traits"
 version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f786295d8d9754466f8bdb94a67d6c9c647937450bcb4bb12403174800ae1ae7"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#84a6fea4286423e702efad05cdbffc6552c7ff3e"
 dependencies = [
  "cw-orch-core",
  "prost 0.11.9",

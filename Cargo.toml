@@ -36,7 +36,7 @@ cw-address-like = { version = "1.0" }
 
 schemars = "0.8"
 
-cw-orch = { version = "0.19.0" }
+cw-orch = { git = "https://github.com/abstractsdk/cw-orchestrator", branch = "update/injective-test-tube" }
 scw20 = { path = "contracts/scw20", features = ["interface", "library"] }
 staking = { path = "contracts/staking", features = ["interface", "library"] }
 
