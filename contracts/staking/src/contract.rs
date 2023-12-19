@@ -1,10 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult};
+use cosmwasm_std::{
+    Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Timestamp, Uint128,
+};
 
 use crate::error::ContractError;
+use crate::execute::{stake, unstake};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::rebase::execute_rebase;
+use crate::state::{Config, EpochState, CONFIG, EPOCH_STATE};
 
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -14,7 +17,26 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    Ok(cw20_base::contract::instantiate(deps, env, info, msg.base)?)
+    let config = Config {
+        ohm: msg.ohm,
+        epoch_length: msg.epoch_length,
+        admin: msg
+            .admin
+            .map(|addr| deps.api.addr_validate(&addr))
+            .transpose()?
+            .unwrap_or(info.sender),
+    };
+    let state = EpochState {
+        number: msg.first_epoch_number,
+        end: Timestamp::from_seconds(msg.first_epoch_time),
+        distribute: Uint128::zero(),
+        current_exchange_rate: Decimal256::one(),
+    };
+
+    CONFIG.save(deps.storage, &config)?;
+    EPOCH_STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new())
 }
 
 /// Handling contract execution
@@ -26,8 +48,8 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Rebase { profit } => execute_rebase(deps, info, profit),
-        _ => Ok(cw20_base::contract::execute(deps, env, info, msg.into())?),
+        ExecuteMsg::Stake { to } => stake(deps, env, info, to),
+        ExecuteMsg::Unstake { to } => unstake(deps, env, info, to),
     }
 }
 
@@ -35,7 +57,6 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::CirculatingSupply {} => todo!(),
         // Find matched incoming message variant and query them your custom logic
         // and then construct your query response with the type usually defined
         // `msg.rs` alongside with the query message itself.
@@ -44,15 +65,15 @@ pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
-/// Handling submessage reply.
-/// For more info on submessage and reply, see https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#submessages
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(_deps: DepsMut, _env: Env, _msg: Reply) -> Result<Response, ContractError> {
-    // With `Response` type, it is still possible to dispatch message to invoke external logic.
-    // See: https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#dispatching-messages
-
-    todo!()
-}
+// pub const AFTER_SOHM_REBASE_REPLY: u64 = 1;
+// /// Handling submessage reply.
+// /// For more info on submessage and reply, see https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#submessages
+// #[cfg_attr(not(feature = "library"), entry_point)]
+// pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+//     match msg.id {
+//         AFTER_SOHM_REBASE_REPLY => rebase_reply(deps, env),
+//     }
+// }
 
 #[cfg(test)]
 pub mod test {
@@ -73,14 +94,11 @@ pub mod test {
             env,
             info,
             InstantiateMsg {
-                base: cw20_base::msg::InstantiateMsg {
-                    name: "OHM".to_string(),
-                    symbol: "OHM".to_string(),
-                    decimals: 6,
-                    initial_balances: vec![],
-                    mint: None,
-                    marketing: None,
-                },
+                ohm: todo!(),
+                epoch_length: todo!(),
+                first_epoch_number: todo!(),
+                first_epoch_time: todo!(),
+                admin: todo!(),
             },
         )?;
 

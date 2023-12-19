@@ -180,15 +180,11 @@ pub enum MigrateMsg {}
 #[derive(QueryResponses)]
 #[cfg_attr(feature = "interface", derive(cw_orch::QueryFns))]
 pub enum QueryMsg {
-    // This example query variant indicates that any client can query the contract
-    // using `YourQuery` and it will return `YourQueryResponse`
-    // This `returns` information will be included in contract's schema
-    // which is used for client code generation.
-    //
-    // #[returns(YourQueryResponse)]
-    // YourQuery {},
+    #[returns(CirculatingSupplyResponse)]
+    CirculatingSupply {},
 }
 
-// We define a custom struct for each query response
-// #[cw_serde]
-// pub struct YourQueryResponse {}
+#[cw_serde]
+pub struct CirculatingSupplyResponse {
+    supply: Uint128,
+}

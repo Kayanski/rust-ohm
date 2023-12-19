@@ -9,9 +9,20 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 library = []
-interface = []
+interface = ["scw20/interface"]
 
 [dependencies]
+cosmwasm-schema = "1.5.0"
+cosmwasm-std.workspace = true
+cw-storage-plus = { workspace = true }
+cw20.workspace = true
+cw20-base = "1.1.2"
+thiserror = "1.0.51"
+scw20 = { workspace = true, features = ["library"] }
+cw-asset = "3.0.0"
+injective-std = "0.1.4"
+cosmos-sdk-proto = "0.19.0"
+prost = "0.12.3"
 
 # Backup release profile, will result in warnings during optimization
 [profile.release]
@@ -24,3 +35,6 @@ codegen-units = 1
 panic = 'abort'
 incremental = false
 overflow-checks = true
+
+[dev-dependencies]
+anyhow = "1.0.75"

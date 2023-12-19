@@ -7,7 +7,7 @@ mod tests {
         msg::{ExecuteMsgFns, InstantiateMsg},
     };
 
-    pub const ADMIN: &str = "ADMIN;=";
+    pub const ADMIN: &str = "ADMIN";
 
     #[test]
     pub fn first_integration() -> anyhow::Result<()> {
