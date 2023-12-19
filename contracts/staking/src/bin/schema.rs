@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use scw20::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use staking::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 
 fn main() {
     write_api! {

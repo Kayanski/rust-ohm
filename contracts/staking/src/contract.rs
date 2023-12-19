@@ -1,13 +1,16 @@
+use cosmos_sdk_proto::traits::Message;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Timestamp, Uint128,
+    to_json_binary, Binary, CosmosMsg, Decimal256, Deps, DepsMut, Env, MessageInfo, Response,
+    StdResult, Timestamp, Uint128,
 };
+use injective_std::types::injective::tokenfactory::v1beta1::MsgCreateDenom;
 
 use crate::error::ContractError;
 use crate::execute::{stake, unstake};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, EpochState, CONFIG, EPOCH_STATE};
+use crate::state::{Config, EpochState, CONFIG, EPOCH_STATE, STAKING_TOKEN_DENOM};
 
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -36,7 +39,18 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &config)?;
     EPOCH_STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new())
+    // We create the staked currency denomination
+    let msg = CosmosMsg::Stargate {
+        type_url: MsgCreateDenom::TYPE_URL.to_string(),
+        value: MsgCreateDenom {
+            sender: env.contract.address.to_string(),
+            subdenom: STAKING_TOKEN_DENOM.to_string(),
+        }
+        .encode_to_vec()
+        .into(),
+    };
+
+    Ok(Response::new().add_message(msg))
 }
 
 /// Handling contract execution
@@ -77,29 +91,49 @@ pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 
 #[cfg(test)]
 pub mod test {
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmos_sdk_proto::{traits::Message, Any};
+    use cosmwasm_std::coins;
+    use cw_orch::{injective_test_tube::InjectiveTestTube, prelude::*};
+    use injective_std::types::injective::tokenfactory::v1beta1::{
+        MsgCreateDenom, MsgCreateDenomResponse,
+    };
 
-    use crate::msg::InstantiateMsg;
+    use staking::interface::Staking;
+    use staking::msg::InstantiateMsg;
 
-    use super::instantiate;
+    pub const MAIN_TOKEN: &str = "OHM";
+    pub const AMOUNT_TO_CREATE_DENOM: u128 = 10_000_000_000_000_000_000u128;
 
     #[test]
     pub fn init_works() -> anyhow::Result<()> {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let info = mock_info("admin", &[]);
+        let chain = InjectiveTestTube::new(coins(AMOUNT_TO_CREATE_DENOM * 2, "inj"));
 
-        instantiate(
-            deps.as_mut(),
-            env,
-            info,
-            InstantiateMsg {
-                ohm: todo!(),
-                epoch_length: todo!(),
-                first_epoch_number: todo!(),
-                first_epoch_time: todo!(),
-                admin: todo!(),
+        // First we need to create the OHM denom
+        chain.commit_any::<MsgCreateDenomResponse>(
+            vec![Any {
+                type_url: MsgCreateDenom::TYPE_URL.to_string(),
+                value: MsgCreateDenom {
+                    sender: chain.sender().to_string(),
+                    subdenom: MAIN_TOKEN.to_string(),
+                }
+                .encode_to_vec(),
+            }],
+            None,
+        )?;
+
+        let contract = Staking::new("staking", chain.clone());
+        contract.upload()?;
+
+        contract.instantiate(
+            &InstantiateMsg {
+                ohm: format!("{}/{MAIN_TOKEN}", chain.sender()),
+                epoch_length: 2000,
+                first_epoch_number: 100_000_000,
+                first_epoch_time: 100_000_000,
+                admin: None,
             },
+            None,
+            None,
         )?;
 
         Ok(())

@@ -19,7 +19,7 @@ license = "GPL-3.0-or-later"
 keywords = ["cosmos", "cosmwasm", "olympus"]
 
 [workspace.dependencies]
-cosmwasm-std = { version = "1.5.0", features = ["cosmwasm_1_2"] }
+cosmwasm-std = { version = "1.2.7", features = ["cosmwasm_1_2"] }
 cosmwasm-schema = { version = "1.2" }
 cw-controllers = { version = "1.0" }
 cw-utils = { version = "1.0" }
@@ -39,7 +39,7 @@ schemars = "0.8"
 cw-orch = { git = "https://github.com/abstractsdk/cw-orchestrator", branch = "update/injective-test-tube" }
 scw20 = { path = "contracts/scw20", features = ["interface", "library"] }
 staking = { path = "contracts/staking", features = ["interface", "library"] }
-
+injective-std = { path = "packages/injective-std" }
 
 # Backup release profile, will result in warnings during optimization
 [profile.release]

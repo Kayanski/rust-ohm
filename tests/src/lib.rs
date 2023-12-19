@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::Uint128;
-    use cw_orch::{mock::Mock, prelude::*};
+    use cosmwasm_std::{Uint128, coins};
+    use cw_orch::{mock::Mock, prelude::*, injective_test_tube::InjectiveTestTube};
     use scw20::{
         interface::SCW20,
         msg::{ExecuteMsgFns, InstantiateMsg},
@@ -11,7 +11,7 @@ mod tests {
 
     #[test]
     pub fn first_integration() -> anyhow::Result<()> {
-        let chain = Mock::new(&Addr::unchecked(ADMIN));
+        let chain = InjectiveTestTube::new(coins(100_000_000_000_000, "inj"));
 
         let contract = SCW20::new("s-ohm", chain);
 
@@ -35,4 +35,8 @@ mod tests {
 
         Ok(())
     }
+
+
+
+    
 }
