@@ -1,0 +1,16 @@
+[package]
+name = "tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+cosmwasm-std.workspace = true
+cw-orch.workspace = true
+scw20 = { workspace = true, features = ["interface", "library"] }
+cw20-base = { workspace = true }

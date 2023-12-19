@@ -1210,6 +1210,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tests"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cosmwasm-std",
+ "cw-orch",
+ "cw20-base",
+ "scw20",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
