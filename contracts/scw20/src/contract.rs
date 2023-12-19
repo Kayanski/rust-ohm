@@ -1,15 +1,10 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult};
-use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::rebase::execute_rebase;
-
-// version info for migration info
-const CONTRACT_NAME: &str = "crates.io:{{project-name}}";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -56,4 +51,38 @@ pub fn reply(_deps: DepsMut, _env: Env, _msg: Reply) -> Result<Response, Contrac
     // See: https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#dispatching-messages
 
     todo!()
+}
+
+#[cfg(test)]
+pub mod test {
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+
+    use crate::msg::InstantiateMsg;
+
+    use super::instantiate;
+
+    #[test]
+    pub fn init_works() -> anyhow::Result<()> {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let info = mock_info("admin", &[]);
+
+        instantiate(
+            deps.as_mut(),
+            env,
+            info,
+            InstantiateMsg {
+                base: cw20_base::msg::InstantiateMsg {
+                    name: "OHM".to_string(),
+                    symbol: "OHM".to_string(),
+                    decimals: 6,
+                    initial_balances: vec![],
+                    mint: None,
+                    marketing: None,
+                },
+            },
+        )?;
+
+        Ok(())
+    }
 }

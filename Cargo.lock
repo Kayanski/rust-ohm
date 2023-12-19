@@ -1032,6 +1032,7 @@ dependencies = [
 name = "scw20"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-orch",
