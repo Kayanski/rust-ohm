@@ -1,7 +1,6 @@
 use cosmos_sdk_proto::traits::Message;
 use cosmwasm_std::{
-    to_json_binary, BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response,
-    Uint256,
+    BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response, Uint256,
 };
 use injective_std::types::injective::tokenfactory::v1beta1::{MsgBurn, MsgMint};
 
@@ -74,16 +73,15 @@ pub fn stake(
     // We mint some sOHM to use
     let mint_msg = CosmosMsg::Stargate {
         type_url: MsgMint::TYPE_URL.to_string(),
-        value: to_json_binary(
-            &MsgMint {
-                sender: env.contract.address.to_string(),
-                amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
-                    denom: staking_denom(&env),
-                    amount: mint_amount.to_string(),
-                }),
-            }
-            .encode_to_vec(),
-        )?,
+        value: MsgMint {
+            sender: env.contract.address.to_string(),
+            amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
+                denom: staking_denom(&env),
+                amount: mint_amount.to_string(),
+            }),
+        }
+        .encode_to_vec()
+        .into(),
     };
 
     // And send to the depositors
@@ -122,16 +120,15 @@ pub fn unstake(
     // We burn the received sOHM to the depositor
     let burn_msg = CosmosMsg::Stargate {
         type_url: MsgMint::TYPE_URL.to_string(),
-        value: to_json_binary(
-            &MsgBurn {
-                sender: env.contract.address.to_string(),
-                amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
-                    denom: staking_denom(&env),
-                    amount: deposited_amount.to_string(),
-                }),
-            }
-            .encode_to_vec(),
-        )?,
+        value: MsgBurn {
+            sender: env.contract.address.to_string(),
+            amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
+                denom: staking_denom(&env),
+                amount: deposited_amount.to_string(),
+            }),
+        }
+        .encode_to_vec()
+        .into(),
     };
 
     // We send OHM back to the depositor

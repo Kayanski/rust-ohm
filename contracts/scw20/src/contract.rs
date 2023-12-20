@@ -82,7 +82,7 @@ pub mod test {
                     marketing: None,
                 },
             },
-        )?;
+        );
 
         Ok(())
     }

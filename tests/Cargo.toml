@@ -14,3 +14,7 @@ cosmwasm-std.workspace = true
 cw-orch.workspace = true
 scw20 = { workspace = true, features = ["interface", "library"] }
 cw20-base = { workspace = true }
+injective-std.workspace = true
+prost = { workspace = true }
+prost-types = { workspace = true }
+cosmos-sdk-proto = { workspace = true }

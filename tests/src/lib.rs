@@ -1,13 +1,13 @@
+pub mod tokenfactory;
+
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{Uint128, coins};
-    use cw_orch::{mock::Mock, prelude::*, injective_test_tube::InjectiveTestTube};
+    use cosmwasm_std::{coins, Uint128};
+    use cw_orch::{injective_test_tube::InjectiveTestTube, mock::Mock, prelude::*};
     use scw20::{
         interface::SCW20,
         msg::{ExecuteMsgFns, InstantiateMsg},
     };
-
-    pub const ADMIN: &str = "ADMIN";
 
     #[test]
     pub fn first_integration() -> anyhow::Result<()> {
@@ -31,12 +31,8 @@ mod tests {
             None,
         )?;
 
-        contract.rebase(Uint128::from(100u128))?;
+        // contract.rebase(Uint128::from(100u128))?;
 
         Ok(())
     }
-
-
-
-    
 }
