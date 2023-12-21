@@ -1,2 +1,3 @@
 a40bba7f4a2009be68a9af2e6c3a7c7bf689d7371e410baff518225beb2e21aa  target/wasm32-unknown-unknown/release/scw20.wasm
-b847cdf638b444fe49305808992c3d35d83ef6a7193bf5013b7b86b960514a84  target/wasm32-unknown-unknown/release/staking.wasm
+fdbb36b9a640150f0165c24bc0e6c5104a380f1486b8b9dc20b5cc439b265100  target/wasm32-unknown-unknown/release/staking.wasm
+a14ffc8bb77fd2fa4616f0dd4dc3aa6fa10d728de94bd07aa3e6dded9fb3e098  target/wasm32-unknown-unknown/release/bond.wasm
