@@ -1,14 +1,12 @@
-use cosmos_sdk_proto::traits::Message;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Coin, CosmosMsg, Decimal256, Deps, DepsMut, Env, MessageInfo, Response,
-    Timestamp,
+    to_json_binary, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Response, Timestamp,
 };
-use injective_std::types::injective::tokenfactory::v1beta1::{MsgCreateDenom, MsgMint};
 
 use crate::error::ContractError;
-use crate::execute::{rebase, stake, unstake};
+use crate::execute::{mint, rebase, stake, unstake};
+use crate::helpers::{create_denom_msg, mint_msgs};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::{base_denom, query_config, query_exchange_rate};
 use crate::state::{
@@ -41,53 +39,17 @@ pub fn instantiate(
 
     // We create the base and the staked currency denomination
     // Don't forget to send some funds to the contract to create a denomination
-    let base_currency_msg = CosmosMsg::Stargate {
-        type_url: MsgCreateDenom::TYPE_URL.to_string(),
-        value: MsgCreateDenom {
-            sender: env.contract.address.to_string(),
-            subdenom: BASE_TOKEN_DENOM.to_string(),
-        }
-        .encode_to_vec()
-        .into(),
-    };
+    let base_currency_msg = create_denom_msg(&env, BASE_TOKEN_DENOM.to_string());
 
     let base_mint_msgs = msg
         .initial_balances
         .iter()
         .flat_map(|(receiver, balance)| {
-            [
-                CosmosMsg::Stargate {
-                    type_url: MsgMint::TYPE_URL.to_string(),
-                    value: MsgMint {
-                        sender: env.contract.address.to_string(),
-                        amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
-                            denom: base_denom(&env),
-                            amount: balance.to_string(),
-                        }),
-                    }
-                    .encode_to_vec()
-                    .into(),
-                },
-                CosmosMsg::Bank(cosmwasm_std::BankMsg::Send {
-                    to_address: receiver.clone(),
-                    amount: vec![Coin {
-                        denom: base_denom(&env),
-                        amount: *balance,
-                    }],
-                }),
-            ]
+            mint_msgs(&env, base_denom(&env), receiver.clone(), *balance)
         })
         .collect::<Vec<_>>();
 
-    let staked_currency_msg = CosmosMsg::Stargate {
-        type_url: MsgCreateDenom::TYPE_URL.to_string(),
-        value: MsgCreateDenom {
-            sender: env.contract.address.to_string(),
-            subdenom: STAKING_TOKEN_DENOM.to_string(),
-        }
-        .encode_to_vec()
-        .into(),
-    };
+    let staked_currency_msg = create_denom_msg(&env, STAKING_TOKEN_DENOM.to_string());
 
     Ok(Response::new()
         .add_message(base_currency_msg)
@@ -107,6 +69,7 @@ pub fn execute(
         ExecuteMsg::Stake { to } => stake(deps, env, info, to),
         ExecuteMsg::Unstake { to } => unstake(deps, env, info, to),
         ExecuteMsg::Rebase {} => rebase(deps, env, info),
+        ExecuteMsg::Mint { to, amount } => mint(deps, env, info, to, amount),
         ExecuteMsg::UpdateConfig {
             admin,
             epoch_length,

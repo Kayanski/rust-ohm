@@ -24,6 +24,10 @@ pub enum ExecuteMsg {
         to: String,
     },
     Rebase {},
+    Mint {
+        to: String,
+        amount: Uint128,
+    },
     UpdateConfig {
         admin: Option<String>,
         epoch_length: Option<u64>,

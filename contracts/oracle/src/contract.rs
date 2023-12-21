@@ -11,10 +11,10 @@ use crate::state::{PAIR_INFO, POOL_INFO};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: InstantiateMsg,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     Ok(Response::new())
 }
@@ -24,7 +24,7 @@ pub fn instantiate(
 pub fn execute(
     deps: DepsMut,
     env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
@@ -45,7 +45,7 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(
     deps: Deps,
-    env: Env,
+    _env: Env,
     msg: astroport::pair::QueryMsg,
 ) -> Result<Binary, ContractError> {
     match msg {

@@ -1,13 +1,13 @@
 use cosmos_sdk_proto::traits::Message;
 use cosmwasm_std::{
-    BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response, Uint256,
+    BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response, Uint128, Uint256,
 };
 use injective_std::types::injective::tokenfactory::v1beta1::{MsgBurn, MsgMint};
 
 use crate::{
-    helpers::deposit_one_coin,
+    helpers::{deposit_one_coin, mint_msgs},
     query::{base_denom, current_exchange_rate, staking_denom, token_balance},
-    state::{CONFIG, EPOCH_STATE},
+    state::{CONFIG, EPOCH_STATE, MINTER_INFO},
     ContractError,
 };
 
@@ -62,30 +62,10 @@ pub fn stake(
     let mint_amount =
         (Decimal256::from_ratio(deposited_amount, 1u128) / exchange_rate) * Uint256::one();
 
-    // We mint some sOHM to use
-    let mint_msg = CosmosMsg::Stargate {
-        type_url: MsgMint::TYPE_URL.to_string(),
-        value: MsgMint {
-            sender: env.contract.address.to_string(),
-            amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
-                denom: staking_denom(&env),
-                amount: mint_amount.to_string(),
-            }),
-        }
-        .encode_to_vec()
-        .into(),
-    };
+    // We mint some sOHM to the to address
+    let mint_msgs = mint_msgs(&env, staking_denom(&env), to, mint_amount.try_into()?);
 
-    // And send to the depositors
-    let send_msg = CosmosMsg::Bank(BankMsg::Send {
-        to_address: to,
-        amount: vec![Coin {
-            amount: mint_amount.try_into()?,
-            denom: staking_denom(&env),
-        }],
-    });
-
-    Ok(Response::new().add_message(mint_msg).add_message(send_msg))
+    Ok(Response::new().add_messages(mint_msgs))
 }
 
 pub fn unstake(
@@ -125,4 +105,19 @@ pub fn unstake(
     });
 
     Ok(Response::new().add_message(burn_msg).add_message(send_msg))
+}
+
+pub fn mint(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    to: String,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    let minter_info = MINTER_INFO.load(deps.storage, info.sender)?;
+    if !minter_info.can_mint {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    Ok(Response::new().add_messages(mint_msgs(&env, base_denom(&env), to, amount)))
 }

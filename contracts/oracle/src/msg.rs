@@ -3,13 +3,7 @@ use cosmwasm_std::{Decimal256, Uint128};
 
 /// Message type for `instantiate` entry_point
 #[cw_serde]
-pub struct InstantiateMsg {
-    pub admin: Option<String>,
-    pub epoch_length: u64,
-    pub epoch_apr: Decimal256,
-    pub first_epoch_time: u64,
-    pub initial_balances: Vec<(String, Uint128)>,
-}
+pub struct InstantiateMsg {}
 
 /// Message type for `execute` entry_point
 #[cw_serde]
