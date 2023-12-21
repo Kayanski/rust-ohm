@@ -1,0 +1,47 @@
+[package]
+name = "oracle"
+version.workspace = true
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+library = []
+interface = ["dep:cw-orch"]
+
+[dependencies]
+cosmwasm-schema = "1.5.0"
+cosmwasm-std.workspace = true
+cw-storage-plus = { workspace = true }
+cw20.workspace = true
+cw20-base = { version = "1.1.2", features = ["library"] }
+thiserror = "1.0.51"
+cw-asset = "3.0.0"
+cosmos-sdk-proto = { version = "0.19.0", default-features = false }
+prost = "0.12.3"
+cw-orch = { workspace = true, optional = true }
+injective-std = { workspace = true }
+astroport = "3.6.1"
+
+
+[dev-dependencies]
+anyhow = "1.0.75"
+cw-orch = { workspace = true, features = ["injective-test-tube", "eth"] }
+serde = "1.0.193"
+oracle = { path = ".", features = ["interface"] }
+test-fuzz = "3.1.0"
+tests = { path = "../../tests" }
+
+# Backup release profile, will result in warnings during optimization
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true

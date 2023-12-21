@@ -15,19 +15,15 @@ pub struct InstantiateMsg {
 #[cw_serde]
 #[cfg_attr(feature = "interface", derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
-    #[cfg_attr(feature = "interface", payable)]
-    Stake {
-        to: String,
+    UpdatePair {
+        token: String,
+        denom1: String,
+        denom2: String,
     },
-    #[cfg_attr(feature = "interface", payable)]
-    Unstake {
-        to: String,
-    },
-    Rebase {},
-    UpdateConfig {
-        admin: Option<String>,
-        epoch_length: Option<u64>,
-        epoch_apr: Option<Decimal256>,
+    UpdatePool {
+        total_share: Uint128,
+        amount1: Uint128,
+        amount2: Uint128,
     },
 }
 
@@ -40,17 +36,15 @@ pub enum MigrateMsg {}
 #[derive(QueryResponses)]
 #[cfg_attr(feature = "interface", derive(cw_orch::QueryFns))]
 pub enum QueryMsg {
-    #[returns(ConfigResponse)]
-    Config {},
-    #[returns(Decimal256)]
-    ExchangeRate {},
+    #[returns(PriceResponse)]
+    Price {
+        pair: String,
+        token_in: String,
+        token_out: String,
+    },
 }
 
 #[cw_serde]
-pub struct ConfigResponse {
-    pub epoch_length: u64,
-    pub epoch_apr: Decimal256,
-    pub admin: String,
-    pub ohm: String,
-    pub sohm: String,
+pub struct PriceResponse {
+    pub current_price: Decimal256,
 }

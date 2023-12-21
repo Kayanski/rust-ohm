@@ -1,24 +1,27 @@
 use cosmwasm_std::{Decimal256, Deps, Env, StdError, SupplyResponse, Uint128};
 
 use crate::{
-    state::{Config, CONFIG, STAKING_TOKEN_DENOM},
+    msg::ConfigResponse,
+    state::{BASE_TOKEN_DENOM, CONFIG, STAKING_TOKEN_DENOM},
     ContractError,
 };
 
+pub fn base_denom(env: &Env) -> String {
+    factory_denom(env, BASE_TOKEN_DENOM)
+}
 pub fn staking_denom(env: &Env) -> String {
-    format!("factory/{}/{}", env.contract.address, STAKING_TOKEN_DENOM)
+    factory_denom(env, STAKING_TOKEN_DENOM)
 }
 
-pub fn circulating_supply(deps: Deps) -> Result<Uint128, ContractError> {
-    Ok(cw20_base::contract::query_token_info(deps)?.total_supply)
+pub fn factory_denom(env: &Env, subdenom: impl ToString) -> String {
+    format!("factory/{}/{}", env.contract.address, subdenom.to_string())
 }
 
 pub fn token_balance(deps: Deps, env: &Env) -> Result<Uint128, StdError> {
-    let config = CONFIG.load(deps.storage)?;
     let balance: cosmwasm_std::BalanceResponse = deps.querier.query(
         &cosmwasm_std::QueryRequest::Bank(cosmwasm_std::BankQuery::Balance {
             address: env.contract.address.to_string(),
-            denom: config.ohm,
+            denom: base_denom(env),
         }),
     )?;
 
@@ -50,8 +53,16 @@ pub fn current_exchange_rate(
     }
 }
 
-pub fn query_config(deps: Deps) -> Result<Config, ContractError> {
-    Ok(CONFIG.load(deps.storage)?)
+pub fn query_config(deps: Deps, env: Env) -> Result<ConfigResponse, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    Ok(ConfigResponse {
+        epoch_length: config.epoch_length,
+        epoch_apr: config.epoch_apr,
+        admin: config.admin.to_string(),
+        ohm: base_denom(&env),
+        sohm: staking_denom(&env),
+    })
 }
 
 pub fn query_exchange_rate(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
