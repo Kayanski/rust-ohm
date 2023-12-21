@@ -12,7 +12,7 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus 1.1.0",
- "cw-utils",
+ "cw-utils 1.0.3",
  "cw20-ics20",
  "derivative",
  "hex",
@@ -90,15 +90,44 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.75"
+version = "1.0.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
+checksum = "59d2a3357dde987206219e78ecfbbb6e8dad06cbb65292758d3270e6254f7355"
 
 [[package]]
 name = "arrayvec"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
+
+[[package]]
+name = "astroport"
+version = "3.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "195a7441515817c0d114ec3bebe9faa21393781f796c179c38c75e3cfb9fb4ec"
+dependencies = [
+ "astroport-circular-buffer",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus 0.15.1",
+ "cw-utils 1.0.3",
+ "cw20 0.15.1",
+ "cw3",
+ "itertools 0.10.5",
+ "uint 0.9.5",
+]
+
+[[package]]
+name = "astroport-circular-buffer"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dac37467245383e7a6baeaaabc22dfd85a7b70ff5d693f757ba63bbc6e39d2c3"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus 0.15.1",
+ "thiserror",
+]
 
 [[package]]
 name = "async-recursion"
@@ -108,7 +137,7 @@ checksum = "5fd55a5ba1179988837d24ab4c7cc8ed6efdeff578ede0416b4225a5fca35bd0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -130,18 +159,18 @@ checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
 name = "async-trait"
-version = "0.1.74"
+version = "0.1.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a66537f1bb974b254c98ed142ff995236e81b9d0fe4db0575f46612cb15eb0f9"
+checksum = "fdf6721fb0140e4f897002dd086c06f6c27775df19cfe1fccb21181a48fd2c98"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -304,7 +333,7 @@ dependencies = [
  "cexpr",
  "clang-sys",
  "clap",
- "env_logger",
+ "env_logger 0.9.3",
  "lazy_static",
  "lazycell",
  "log",
@@ -428,6 +457,7 @@ dependencies = [
  "injective-std 0.1.4",
  "prost 0.12.3",
  "serde",
+ "staking",
  "test-fuzz",
  "tests",
  "thiserror",
@@ -928,7 +958,7 @@ checksum = "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -976,7 +1006,7 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus 1.1.0",
- "cw-utils",
+ "cw-utils 1.0.3",
  "schemars",
  "serde",
  "thiserror",
@@ -985,7 +1015,7 @@ dependencies = [
 [[package]]
 name = "cw-orch"
 version = "0.19.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "abstract-cw-multi-test",
  "anyhow",
@@ -998,7 +1028,7 @@ dependencies = [
  "cw-orch-mock",
  "cw-orch-networks",
  "cw-orch-traits",
- "cw-utils",
+ "cw-utils 1.0.3",
  "hex",
  "injective-std 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "injective-test-tube",
@@ -1016,7 +1046,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-contract-derive"
 version = "0.18.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "convert_case",
  "quote",
@@ -1026,12 +1056,12 @@ dependencies = [
 [[package]]
 name = "cw-orch-core"
 version = "0.19.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "abstract-cw-multi-test",
  "anyhow",
  "cosmwasm-std",
- "cw-utils",
+ "cw-utils 1.0.3",
  "dirs",
  "log",
  "serde",
@@ -1044,7 +1074,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-daemon"
 version = "0.19.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -1087,7 +1117,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-fns-derive"
 version = "0.18.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -1098,19 +1128,19 @@ dependencies = [
 [[package]]
 name = "cw-orch-mock"
 version = "0.19.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "abstract-cw-multi-test",
  "cosmwasm-std",
  "cw-orch-core",
- "cw-utils",
+ "cw-utils 1.0.3",
  "serde",
 ]
 
 [[package]]
 name = "cw-orch-networks"
 version = "0.19.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "cw-orch-core",
  "ibc-chain-registry",
@@ -1120,11 +1150,22 @@ dependencies = [
 [[package]]
 name = "cw-orch-traits"
 version = "0.19.0"
-source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#cdb6eb9a7a3db8d2d64020151eccd08420f10c21"
+source = "git+https://github.com/abstractsdk/cw-orchestrator?branch=update/injective-test-tube#eb1a6a9f3427f3c430db4e0daaee39a9e615204a"
 dependencies = [
  "cw-orch-core",
  "prost 0.11.9",
  "prost-types 0.11.9",
+]
+
+[[package]]
+name = "cw-storage-plus"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6cf70ef7686e2da9ad7b067c5942cd3e88dd9453f7af42f54557f8af300fb0"
+dependencies = [
+ "cosmwasm-std",
+ "schemars",
+ "serde",
 ]
 
 [[package]]
@@ -1151,6 +1192,21 @@ dependencies = [
 
 [[package]]
 name = "cw-utils"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ae0b69fa7679de78825b4edeeec045066aa2b2c4b6e063d80042e565bb4da5c"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw2 0.15.1",
+ "schemars",
+ "semver",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "cw-utils"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c4a657e5caacc3a0d00ee96ca8618745d050b8f757c709babafb81208d4239c"
@@ -1162,6 +1218,19 @@ dependencies = [
  "semver",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "cw2"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5abb8ecea72e09afff830252963cb60faf945ce6cef2c20a43814516082653da"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus 0.15.1",
+ "schemars",
+ "serde",
 ]
 
 [[package]]
@@ -1194,13 +1263,26 @@ dependencies = [
 
 [[package]]
 name = "cw20"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6025276fb6e603e974c21f3e4606982cdc646080e8fba3198816605505e1d9a"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-utils 0.15.1",
+ "schemars",
+ "serde",
+]
+
+[[package]]
+name = "cw20"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "526e39bb20534e25a1cd0386727f0038f4da294e5e535729ba3ef54055246abd"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-utils",
+ "cw-utils 1.0.3",
  "schemars",
  "serde",
 ]
@@ -1212,7 +1294,7 @@ source = "git+https://github.com/abstractsdk/cw-plus#fb4f7e985d70f09ab880ca9c084
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-utils",
+ "cw-utils 1.0.3",
  "schemars",
  "serde",
 ]
@@ -1242,7 +1324,7 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus 1.1.0",
- "cw-utils",
+ "cw-utils 1.0.3",
  "cw2 1.2.2",
  "cw20 1.2.2",
  "schemars",
@@ -1261,11 +1343,26 @@ dependencies = [
  "cosmwasm-std",
  "cw-controllers",
  "cw-storage-plus 1.1.0",
- "cw-utils",
+ "cw-utils 1.0.3",
  "cw2 1.1.2",
  "cw20 1.1.2",
  "schemars",
  "semver",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "cw3"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2967fbd073d4b626dd9e7148e05a84a3bebd9794e71342e12351110ffbb12395"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-utils 1.0.3",
+ "cw20 1.1.2",
+ "schemars",
  "serde",
  "thiserror",
 ]
@@ -1291,7 +1388,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "strsim",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -1302,7 +1399,7 @@ checksum = "836a9bbc7ad63342d6d6e7b815ccab164bc77a2d95d84bc3117a8c0d5c98e2d5"
 dependencies = [
  "darling_core",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -1387,6 +1484,12 @@ dependencies = [
  "redox_users",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "dyn-clone"
@@ -1503,6 +1606,19 @@ checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
 dependencies = [
  "atty",
  "humantime",
+ "log",
+ "regex",
+ "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95b3f3e67048839cb0d0781f445682a35113da7121f7c949db0e2be96a4fbece"
+dependencies = [
+ "humantime",
+ "is-terminal",
  "log",
  "regex",
  "termcolor",
@@ -1867,7 +1983,7 @@ checksum = "53b153fd91e4b0147f4aced87be237c98248656bb01050b96bf3ee89220a8ddb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -2542,6 +2658,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f518f335dce6725a761382244631d86cf0ccb2863413590b31338feb467f9c3"
 
 [[package]]
+name = "is-terminal"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb0889898416213fab133e1d33a0e5858a48177452750691bde3666d0fdbaf8b"
+dependencies = [
+ "hermit-abi 0.3.3",
+ "rustix",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2822,7 +2949,7 @@ dependencies = [
  "proc-macro-crate 2.0.1",
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -2894,7 +3021,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -2920,6 +3047,29 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
+name = "oracle"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "astroport",
+ "cosmos-sdk-proto 0.19.0",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-asset",
+ "cw-orch",
+ "cw-storage-plus 1.1.0",
+ "cw20 1.1.2",
+ "cw20-base 1.1.2",
+ "injective-std 0.1.4",
+ "oracle",
+ "prost 0.12.3",
+ "serde",
+ "test-fuzz",
+ "tests",
+ "thiserror",
+]
 
 [[package]]
 name = "os_str_bytes"
@@ -3098,7 +3248,7 @@ checksum = "4359fd9c9171ec6e8c62926d6faaf553a8dc3f64e1507e76da7911b4f6a04405"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -3125,9 +3275,9 @@ dependencies = [
 
 [[package]]
 name = "pkg-config"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
+checksum = "69d3587f8a9e599cc7ec2c00e331f71c4e69a5f9a4b8a6efd5b07466b9736f9a"
 
 [[package]]
 name = "platforms"
@@ -3146,6 +3296,16 @@ name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
+
+[[package]]
+name = "pretty_env_logger"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "865724d4dbe39d9f3dd3b52b88d859d66bcb2d6a0acfd5ea68a65fb66d4bdc1c"
+dependencies = [
+ "env_logger 0.10.1",
+ "log",
+]
 
 [[package]]
 name = "primitive-types"
@@ -3273,7 +3433,7 @@ dependencies = [
  "itertools 0.11.0",
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -3810,21 +3970,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scw20"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "cosmwasm-schema",
- "cosmwasm-std",
- "cw-orch",
- "cw-storage-plus 1.1.0",
- "cw-utils",
- "cw2 1.1.2",
- "cw20-base 1.2.2",
- "thiserror",
-]
-
-[[package]]
 name = "sec1"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3933,7 +4078,7 @@ checksum = "43576ca501357b9b071ac53cdc7da8ef0cbd9493d8df094cd821777ea6e894d3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -3966,7 +4111,7 @@ checksum = "3081f5ffbb02284dda55132aa26daecedd7372a42417bbbab6f14ab7d6bb9145"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -4204,7 +4349,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -4251,9 +4396,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.41"
+version = "2.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c8b28c477cc3bf0e7966561e3460130e1255f7a1cf71931075f1c5e7a7e269"
+checksum = "5b7d0a2c048d661a1a59fcd7355baa232f7ed34e0ee4df2eef3c1c1c0d3852d8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4560,7 +4705,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "subprocess",
- "syn 2.0.41",
+ "syn 2.0.42",
  "test-fuzz-internal",
  "toolchain_find",
 ]
@@ -4604,10 +4749,12 @@ dependencies = [
  "cosmwasm-std",
  "cw-orch",
  "cw20-base 1.2.2",
+ "dotenv",
  "injective-std 0.1.4",
+ "pretty_env_logger",
  "prost 0.11.9",
  "prost-types 0.11.9",
- "scw20",
+ "staking",
 ]
 
 [[package]]
@@ -4633,7 +4780,7 @@ checksum = "01742297787513b79cf8e29d1056ede1313e2420b7b3b15d0a768b4921f549df"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -4734,7 +4881,7 @@ checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -4964,7 +5111,7 @@ checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -5175,7 +5322,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
  "wasm-bindgen-shared",
 ]
 
@@ -5209,7 +5356,7 @@ checksum = "f0eb82fcb7930ae6219a7ecfd55b217f5f0893484b7a13022ebb2b2bf20b5283"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -5494,5 +5641,5 @@ checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]

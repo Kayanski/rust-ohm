@@ -3,15 +3,15 @@ use cosmos_sdk_proto::traits::Message;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
+    to_json_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, Uint128,
 };
 use injective_std::types::injective::tokenfactory::v1beta1::{MsgCreateDenom, MsgMint};
 
-use crate::error::ContractError;
-use crate::execute::{create_market, stake, unstake};
+use crate::error::{ContractError, ContractResult};
+use crate::execute::{stake, unstake};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::{query_config, query_exchange_rate, staking_denom};
-use crate::state::{Config, CONFIG, STAKING_TOKEN_DENOM};
+use crate::state::{Config, Term, CONFIG, CURRENT_DEBT, LAST_DECAY, STAKING_TOKEN_DENOM, TERMS};
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -21,35 +21,16 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let config = Config {
-        ohm: msg.ohm,
-        admin: msg
-            .admin
-            .map(|addr| deps.api.addr_validate(&addr))
-            .transpose()?
-            .unwrap_or(info.sender),
-        treasury: msg
-            .treasury
-            .map(|addr| deps.api.addr_validate(&addr))
-            .transpose()?
-            .unwrap(),
-        principle: msg
-            .principle
-            .map(|addr| deps.api.addr_validate(&addr))
-            .transpose()?
-            .unwrap(),
-        dao: msg
-            .dao
-            .map(|addr| deps.api.addr_validate(&addr))
-            .transpose()?
-            .unwrap(),
-        feed: msg
-            .feed
-            .map(|addr| deps.api.addr_validate(&addr))
-            .transpose()?
-            .unwrap(),
+        principle: msg.principle,
+        pair: deps.api.addr_validate(&msg.pair)?,
+        admin: deps.api.addr_validate(&msg.admin)?,
+        staking: deps.api.addr_validate(&msg.staking)?,
     };
 
     CONFIG.save(deps.storage, &config)?;
+    TERMS.save(deps.storage, &msg.term)?;
+    LAST_DECAY.save(deps.storage, &env.block.time)?;
+    CURRENT_DEBT.save(deps.storage, &Uint128::zero())?;
 
     Ok(Response::new())
 }
@@ -69,6 +50,13 @@ pub fn execute(
         } => deposit(deps, env, info, max_price, depositor),
         ExecuteMsg::Stake { to } => stake(deps, env, info, to),
         ExecuteMsg::Unstake { to } => unstake(deps, env, info, to),
+        ExecuteMsg::UpdateTerms { terms } => update_terms(deps, info, terms),
+        ExecuteMsg::UpdateConfig {
+            principle,
+            pair,
+            admin,
+            staking,
+        } => update_config(deps, info, principle, pair, admin, staking),
     }
 }
 
@@ -81,15 +69,41 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
     }
 }
 
-// pub const AFTER_SOHM_REBASE_REPLY: u64 = 1;
-// /// Handling submessage reply.
-// /// For more info on submessage and reply, see https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#submessages
-// #[cfg_attr(not(feature = "library"), entry_point)]
-// pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
-//     match msg.id {
-//         AFTER_SOHM_REBASE_REPLY => rebase_reply(deps, env),
-//     }
-// }
+pub fn update_terms(deps: DepsMut, info: MessageInfo, terms: Term) -> ContractResult {
+    TERMS.save(deps.storage, &terms)?;
+    Ok(Response::new())
+}
+
+pub fn update_config(
+    deps: DepsMut,
+    info: MessageInfo,
+    principle: Option<String>,
+    pair: Option<String>,
+    admin: Option<String>,
+    staking: Option<String>,
+) -> ContractResult {
+    let mut config = CONFIG.load(deps.storage)?;
+
+    if let Some(principle) = principle {
+        config.principle = principle;
+    }
+
+    if let Some(pair) = pair {
+        config.principle = pair;
+    }
+
+    if let Some(admin) = admin {
+        config.admin = deps.api.addr_validate(&admin)?;
+    }
+
+    if let Some(staking) = staking {
+        config.staking = deps.api.addr_validate(&staking)?;
+    }
+
+    CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new())
+}
 
 #[cfg(test)]
 pub mod test {

@@ -41,7 +41,7 @@ cosmos-sdk-proto = "0.19.0"
 schemars = "0.8"
 
 cw-orch = { git = "https://github.com/abstractsdk/cw-orchestrator", branch = "update/injective-test-tube" }
-scw20 = { path = "contracts/scw20", features = ["interface", "library"] }
+# cw-orch = { path = "../../abstract/cw-orchestrator/cw-orch" }
 staking = { path = "contracts/staking", features = ["interface", "library"] }
 bond = { path = "contracts/bond", features = ["interface", "library"] }
 injective-std = { path = "packages/injective-std" }

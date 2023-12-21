@@ -1,17 +1,36 @@
 use cosmwasm_std::{Decimal256, Deps, Env, StdError, SupplyResponse, Uint128};
 
 use crate::{
-    state::{Config, CONFIG, STAKING_TOKEN_DENOM},
+    state::{Config, CONFIG},
     ContractError,
 };
 
-pub fn staking_denom(env: &Env) -> String {
-    format!("factory/{}/{}", env.contract.address, STAKING_TOKEN_DENOM)
+pub fn debt_ratio(deps: Deps) -> Result<Decimal256, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let staking_config: ConfigResponse = deps.querier.query(cosmwasm_std::QueryRequest::Wasm(
+        cosmwasm_std::WasmQuery::Smart {
+            contract_addr: config.staking.to_string(),
+            msg: to_binary(&staking::msg::QueryMsg::Config {})?,
+        },
+    ))?;
+    let supply = deps.querier.query(cosmwasm_std::QueryRequest::Bank(
+        cosmwasm_std::BankQuery::Supply { denom: () },
+    ));
+
+    // uint supply = IERC20( OHM ).totalSupply();
+    // debtRatio_ = FixedPoint.fraction(
+    //     currentDebt().mul( 1e9 ),
+    //     supply
+    // ).decode112with18().div( 1e18 );
 }
 
 pub fn circulating_supply(deps: Deps) -> Result<Uint128, ContractError> {
     Ok(cw20_base::contract::query_token_info(deps)?.total_supply)
 }
+/**
+ *  @notice calculate current bond price and remove floor if above
+ *  @return price_ uint
+ */
 
 pub fn token_balance(deps: Deps, env: &Env) -> Result<Uint128, StdError> {
     let config = CONFIG.load(deps.storage)?;

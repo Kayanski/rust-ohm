@@ -1,13 +1,14 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Decimal256;
-
-use crate::state::Config;
+use cosmwasm_std::{Decimal256, Uint128};
 
 /// Message type for `instantiate` entry_point
 #[cw_serde]
 pub struct InstantiateMsg {
-    pub ohm: String, // Native token denom
     pub admin: Option<String>,
+    pub epoch_length: u64,
+    pub epoch_apr: Decimal256,
+    pub first_epoch_time: u64,
+    pub initial_balances: Vec<(String, Uint128)>,
 }
 
 /// Message type for `execute` entry_point
@@ -15,9 +16,23 @@ pub struct InstantiateMsg {
 #[cfg_attr(feature = "interface", derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
     #[cfg_attr(feature = "interface", payable)]
-    Stake { to: String },
+    Stake {
+        to: String,
+    },
     #[cfg_attr(feature = "interface", payable)]
-    Unstake { to: String },
+    Unstake {
+        to: String,
+    },
+    Rebase {},
+    Mint {
+        to: String,
+        amount: Uint128,
+    },
+    UpdateConfig {
+        admin: Option<String>,
+        epoch_length: Option<u64>,
+        epoch_apr: Option<Decimal256>,
+    },
 }
 
 /// Message type for `migrate` entry_point
@@ -29,8 +44,17 @@ pub enum MigrateMsg {}
 #[derive(QueryResponses)]
 #[cfg_attr(feature = "interface", derive(cw_orch::QueryFns))]
 pub enum QueryMsg {
-    #[returns(Config)]
+    #[returns(ConfigResponse)]
     Config {},
     #[returns(Decimal256)]
     ExchangeRate {},
+}
+
+#[cw_serde]
+pub struct ConfigResponse {
+    pub epoch_length: u64,
+    pub epoch_apr: Decimal256,
+    pub admin: String,
+    pub ohm: String,
+    pub sohm: String,
 }

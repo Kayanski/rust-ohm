@@ -1,7 +1,7 @@
 use cosmos_sdk_proto::traits::Message;
 use cosmwasm_std::{
-    BankMsg, Coin, CosmosMsg, Decimal256, Deps, DepsMut, Env, MessageInfo, Response, StdError,
-    Uint256,
+    ensure, BankMsg, Coin, CosmosMsg, Decimal256, Deps, DepsMut, Env, MessageInfo, Response,
+    StdError, Uint256,
 };
 use injective_std::types::injective::tokenfactory::v1beta1::{MsgBurn, MsgMint};
 
@@ -180,14 +180,24 @@ pub fn unstake(
 //     Ok(Response::new())
 // }
 
-pub fn decay_amount(deps: Deps, env: Env) -> Result<u128, StdError> {
+pub fn decay_amount(deps: Deps, env: Env) -> Result<Uint128, StdError> {
     let terms = TERMS.load(deps.storage)?;
     let last_decay = LAST_DECAY.load(deps.storage)?;
-    let time_since_last_decay = env.block.time - last_decay;
+    let time_since_last_decay = env.block.time.seconds() - last_decay.seconds();
+    let current_debt = CURRENT_DEBT.load(deps.storage)?;
+
+    let mut decay = current_debt * time_since_last_decay.into() / terms.vesting_term.into();
+    if decay > current_debt {
+        decay = current_debt;
+    }
+    Ok(decay)
 }
 
-pub fn decay_debt(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    Ok(Response::new())
+pub fn decay_debt(deps: DepsMut, env: Env, info: MessageInfo) -> Result<(), ContractError> {
+    CURRENT_DEBT.update(deps.storage, |d| Ok(d - decay_amount(deps.as_ref(), env)))?;
+    LAST_DECAY.save(deps.storage, &env.block.time)?;
+
+    Ok(())
 }
 
 pub fn get_bond_price_in_usd(deps: DepsMut, env: Env, info: MessageInfo) -> Decimal256 {
@@ -215,15 +225,29 @@ pub fn deposit(
     depositor: String,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
+
+    decay_debt(deps, env, info);
+    let current_debt = CURRENT_DEBT.load(deps.storage)?;
     let terms = TERMS.load(deps.storage)?;
 
-    let current_debt = CURRENT_DEBT.load(deps.storage)?;
+    ensure!(
+        current_debt <= terms.max_debt,
+        StdError::generic_err("Max capacity reached")
+    );
+
+    let price_in_usd = bondPriceInUSD(); // Stored in bond info
+    let native_price = _bondPrice();
+
+    ensure!(
+        max_price >= native_price,
+        StdError::generic_err("Slippage limit: more than max price")
+    ); // slippage protection
 
     let deposited_amount = deposit_one_coin(info, config.principle)?;
+
     if (deposited_amount == 0) {
         return ContractError::ReceiveOneCoin(config.principle);
     }
-    decay_debt(deps, env, info);
     if (current_debt >= terms.max_debt) {
         return ContractError::MaxDebtReachedError();
     }

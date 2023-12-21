@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, StdError};
+use cosmwasm_std::{Addr, Response, StdError, Binary};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -29,3 +29,6 @@ pub enum ContractError {
     // Add any other custom errors you like here.
     // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
 }
+
+pub type ContractResult<T = Response> = Result<T, ContractError>;
+pub type QueryResult = Result<Binary, ContractError>;
