@@ -25,7 +25,7 @@ fn proper_initialization() {
 
     // it worked, let's query the state
     let res = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap();
-    let value: ConfigResponse = from_json(&res).unwrap();
+    let value: ConfigResponse = from_json(res).unwrap();
     assert_eq!("owner0000", value.owner.as_str());
     assert_eq!("base0000", &value.base_asset);
 }
@@ -53,7 +53,7 @@ fn update_config() {
 
     // it worked, let's query the state
     let res = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap();
-    let value: ConfigResponse = from_json(&res).unwrap();
+    let value: ConfigResponse = from_json(res).unwrap();
     assert_eq!("owner0001", value.owner.as_str());
     assert_eq!("base0000", &value.base_asset);
 
@@ -95,7 +95,7 @@ fn register_feeder() {
     let info = mock_info("owner0000", &[]);
     let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
     let feeder_res: FeederResponse = from_json(
-        &query(
+        query(
             deps.as_ref(),
             mock_env(),
             QueryMsg::Feeder {
@@ -161,7 +161,7 @@ fn feed_price() {
         },
     )
     .unwrap();
-    let value: PriceResponse = from_json(&res).unwrap();
+    let value: PriceResponse = from_json(res).unwrap();
 
     assert_eq!(
         value,
@@ -181,7 +181,7 @@ fn feed_price() {
         },
     )
     .unwrap();
-    let value: PriceResponse = from_json(&res).unwrap();
+    let value: PriceResponse = from_json(res).unwrap();
 
     assert_eq!(
         value,
@@ -201,7 +201,7 @@ fn feed_price() {
         },
     )
     .unwrap();
-    let value: PricesResponse = from_json(&res).unwrap();
+    let value: PricesResponse = from_json(res).unwrap();
 
     assert_eq!(
         value,

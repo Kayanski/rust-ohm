@@ -1,12 +1,14 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{
+    to_json_binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Response, Uint128,
+};
 
-use crate::error::{ContractError, ContractResult};
-use crate::execute::deposit;
+use crate::error::{ContractError, ContractResult, QueryResult};
+use crate::execute::{deposit, redeem};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query_config;
-use crate::state::{Config, Term, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT};
+use crate::state::{Config, Term, ADJUSTMENT, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT};
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -19,7 +21,11 @@ pub fn instantiate(
         usd: msg.usd,
         principle: msg.principle,
         oracle: deps.api.addr_validate(&msg.oracle)?,
-        admin: deps.api.addr_validate(&msg.admin)?,
+        admin: msg
+            .admin
+            .map(|addr| deps.api.addr_validate(&addr))
+            .transpose()?
+            .unwrap_or(info.sender),
         staking: deps.api.addr_validate(&msg.staking)?,
         oracle_trust_period: msg.oracle_trust_period,
         treasury: deps.api.addr_validate(&msg.treasury)?,
@@ -46,8 +52,7 @@ pub fn execute(
             max_price,
             depositor,
         } => deposit(deps, env, info, max_price, depositor),
-        ExecuteMsg::Stake { to } => stake(deps, env, info, to),
-        ExecuteMsg::Unstake { to } => unstake(deps, env, info, to),
+        ExecuteMsg::Redeem { recipient, stake } => redeem(deps, env, info, recipient, stake),
         ExecuteMsg::UpdateTerms { terms } => update_terms(deps, info, terms),
         ExecuteMsg::UpdateConfig {
             principle,
@@ -55,19 +60,27 @@ pub fn execute(
             admin,
             staking,
         } => update_config(deps, info, principle, pair, admin, staking),
+        ExecuteMsg::UpdateAdjustment {
+            add,
+            rate,
+            target,
+            buffer,
+        } => update_adjustment(deps, info, add, rate, target, buffer),
     }
 }
 
 /// Handling contract query
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> QueryResult {
     match msg {
         QueryMsg::Config {} => Ok(to_json_binary(&query_config(deps)?)?),
-        QueryMsg::ExchangeRate {} => Ok(to_json_binary(&query_exchange_rate(deps, env)?)?),
     }
 }
 
 pub fn update_terms(deps: DepsMut, info: MessageInfo, terms: Term) -> ContractResult {
+    if info.sender != CONFIG.load(deps.storage)?.admin {
+        return Err(ContractError::Unauthorized {});
+    }
     TERMS.save(deps.storage, &terms)?;
     Ok(Response::new())
 }
@@ -81,6 +94,9 @@ pub fn update_config(
     staking: Option<String>,
 ) -> ContractResult {
     let mut config = CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
 
     if let Some(principle) = principle {
         config.principle = principle;
@@ -99,6 +115,40 @@ pub fn update_config(
     }
 
     CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new())
+}
+
+pub fn update_adjustment(
+    deps: DepsMut,
+    info: MessageInfo,
+    add: Option<bool>,
+    rate: Option<Decimal256>,
+    target: Option<Decimal256>,
+    buffer: Option<u64>,
+) -> ContractResult {
+    if info.sender != CONFIG.load(deps.storage)?.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    let mut adjustment = ADJUSTMENT.load(deps.storage)?;
+
+    if let Some(add) = add {
+        adjustment.add = add;
+    }
+
+    if let Some(rate) = rate {
+        adjustment.rate = rate;
+    }
+
+    if let Some(target) = target {
+        adjustment.target = target;
+    }
+
+    if let Some(buffer) = buffer {
+        adjustment.buffer = buffer;
+    }
+
+    ADJUSTMENT.save(deps.storage, &adjustment)?;
 
     Ok(Response::new())
 }

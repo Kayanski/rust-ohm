@@ -1,11 +1,12 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, BankMsg, Coin, CosmosMsg, Decimal256, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, Uint128,
+    ensure, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Decimal256, Deps, DepsMut, Env,
+    MessageInfo, Response, StdError, Uint128, Uint256,
 };
+use staking::msg::ConfigResponse;
 
 use crate::{
-    helpers::deposit_one_coin,
-    query::{max_payout, payout_for},
+    helpers::{adjust, deposit_one_coin},
+    query::{max_payout, payout_for, percent_vested_for},
     state::{bond_price, bond_price_in_usd, BOND_INFO, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT},
     ContractError,
 };
@@ -33,17 +34,16 @@ pub fn debt_decay(deps: Deps, env: Env) -> Result<Uint128, StdError> {
     Ok(decay)
 }
 
-pub fn decay_debt(deps: DepsMut, env: Env, info: MessageInfo) -> Result<(), ContractError> {
-    TOTAL_DEBT.update(deps.storage, |d| {
-        Ok::<_, ContractError>(d - debt_decay(deps.as_ref(), env)?)
-    })?;
+pub fn decay_debt(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<(), ContractError> {
+    let debt_decay = debt_decay(deps.as_ref(), env.clone())?;
+    TOTAL_DEBT.update(deps.storage, |d| Ok::<_, ContractError>(d - debt_decay))?;
     LAST_DECAY.save(deps.storage, &env.block.time)?;
 
     Ok(())
 }
 
 pub fn deposit(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     max_price: Decimal256,
@@ -51,9 +51,9 @@ pub fn deposit(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
-    let deposited_amount = deposit_one_coin(info, config.principle)?;
+    let deposited_amount = deposit_one_coin(info.clone(), config.principle.clone())?;
 
-    decay_debt(deps, env, info);
+    decay_debt(deps.branch(), env.clone(), info)?;
     let current_debt = TOTAL_DEBT.load(deps.storage)?;
     let terms = TERMS.load(deps.storage)?;
 
@@ -62,14 +62,14 @@ pub fn deposit(
         StdError::generic_err("Max capacity reached")
     );
 
-    let price_in_usd = bond_price_in_usd(deps.as_ref(), env)?;
-    let native_price = bond_price(deps, env)?;
+    let price_in_usd = bond_price_in_usd(deps.as_ref(), env.clone())?;
+    let native_price = bond_price(deps.branch(), env.clone())?;
 
     ensure!(
         max_price >= native_price,
         StdError::generic_err("Slippage limit: more than max price")
     );
-    let payout = payout_for(deps.as_ref(), env, deposited_amount)?;
+    let payout = payout_for(deps.as_ref(), env.clone(), deposited_amount)?;
 
     ensure!(
         payout.u128() >= 1_000,
@@ -105,12 +105,75 @@ pub fn deposit(
 
         bond.payout += payout;
         bond.vesting_time_left = terms.vesting_term;
-        bond.last_time = env.block.time;
+        bond.last_time = env.clone().block.time;
         bond.price_paid = price_in_usd;
 
         Ok::<_, ContractError>(bond)
     })?;
+
+    adjust(deps, env)?;
     Ok(Response::new()
         .add_message(treasury_msg)
         .add_message(mint_msg))
+}
+
+pub fn redeem(
+    deps: DepsMut,
+    env: Env,
+    _info: MessageInfo,
+    recipient: String,
+    stake: bool,
+) -> Result<Response, ContractError> {
+    let recipient_addr = deps.api.addr_validate(&recipient)?;
+    let mut bond = BOND_INFO.load(deps.storage, &recipient_addr)?;
+    let percent_vested = percent_vested_for(deps.as_ref(), env.clone(), &recipient_addr)?;
+    if percent_vested >= Decimal256::one() {
+        BOND_INFO.remove(deps.storage, &recipient_addr);
+        stake_or_send(deps.as_ref(), recipient_addr, stake, bond.payout)
+    } else {
+        let payout = Uint256::from(bond.payout) * percent_vested;
+
+        bond.payout += Uint128::try_from(payout)?;
+        bond.vesting_time_left -= env.block.time.seconds() - bond.last_time.seconds();
+        bond.last_time = env.block.time;
+
+        BOND_INFO.save(deps.storage, &recipient_addr, &bond)?;
+
+        stake_or_send(deps.as_ref(), recipient_addr, stake, payout.try_into()?)
+    }
+}
+
+pub fn stake_or_send(
+    deps: Deps,
+    recipient: Addr,
+    stake: bool,
+    payout: Uint128,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let staking_config: ConfigResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Wasm(
+        cosmwasm_std::WasmQuery::Smart {
+            contract_addr: config.staking.to_string(),
+            msg: to_json_binary(&staking::msg::QueryMsg::Config {})?,
+        },
+    ))?;
+    let payout_coins = vec![Coin {
+        amount: payout,
+        denom: staking_config.ohm,
+    }];
+
+    let msgs = if !stake {
+        CosmosMsg::Bank(BankMsg::Send {
+            to_address: recipient.to_string(),
+            amount: payout_coins,
+        })
+    } else {
+        CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+            contract_addr: config.staking.to_string(),
+            msg: to_json_binary(&staking::msg::ExecuteMsg::Stake {
+                to: recipient.to_string(),
+            })?,
+            funds: payout_coins,
+        })
+    };
+    Ok(Response::new().add_message(msgs))
 }

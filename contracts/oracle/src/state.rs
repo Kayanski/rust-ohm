@@ -1,28 +1,23 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{CanonicalAddr, Decimal256, Order, StdError, StdResult, Storage};
-use cosmwasm_storage::{singleton, singleton_read, Bucket, ReadonlyBucket};
-
 use crate::msg::PricesResponseElem;
-
-static PREFIX_PRICE: &[u8] = b"price";
-static PREFIX_FEEDER: &[u8] = b"feeder";
-
-static KEY_CONFIG: &[u8] = b"config";
+use cosmwasm_std::{Addr, Decimal256, Order, StdError, StdResult, Storage};
+use cw_storage_plus::{Bound, Item, Map};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
-    pub owner: CanonicalAddr,
+    pub owner: Addr,
     pub base_asset: String,
 }
+pub const CONFIG: Item<Config> = Item::new("config");
 
 pub fn store_config(storage: &mut dyn Storage, config: &Config) -> StdResult<()> {
-    singleton(storage, KEY_CONFIG).save(config)
+    CONFIG.save(storage, config)
 }
 
 pub fn read_config(storage: &dyn Storage) -> StdResult<Config> {
-    singleton_read(storage, KEY_CONFIG).load()
+    CONFIG.load(storage)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -31,14 +26,14 @@ pub struct PriceInfo {
     pub last_updated_time: u64,
 }
 
+pub const PRICES: Map<&str, PriceInfo> = Map::new("price_info");
+pub const FEEDER: Map<&str, Addr> = Map::new("feeder");
 pub fn store_price(storage: &mut dyn Storage, asset: &str, price: &PriceInfo) -> StdResult<()> {
-    let mut price_bucket: Bucket<PriceInfo> = Bucket::new(storage, PREFIX_PRICE);
-    price_bucket.save(asset.as_bytes(), price)
+    PRICES.save(storage, asset, price)
 }
 
 pub fn read_price(storage: &dyn Storage, asset: &str) -> StdResult<PriceInfo> {
-    let price_bucket: ReadonlyBucket<PriceInfo> = ReadonlyBucket::new(storage, PREFIX_PRICE);
-    let res = price_bucket.load(asset.as_bytes());
+    let res = PRICES.load(storage, asset);
     match res {
         Ok(data) => Ok(data),
         Err(_err) => Err(StdError::generic_err(
@@ -55,18 +50,15 @@ pub fn read_prices(
     start_after: Option<String>,
     limit: Option<u32>,
 ) -> StdResult<Vec<PricesResponseElem>> {
-    let price_bucket: ReadonlyBucket<PriceInfo> = ReadonlyBucket::new(storage, PREFIX_PRICE);
-
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = calc_range_start(start_after);
+    let start = start_after.as_ref().map(|s| Bound::exclusive(s.as_str()));
 
-    price_bucket
-        .range(start.as_deref(), None, Order::Ascending)
+    PRICES
+        .range(storage, start, None, Order::Ascending)
         .take(limit)
         .map(|item| {
-            let (k, v) = item?;
+            let (asset, v) = item?;
 
-            let asset = std::str::from_utf8(&k).unwrap().to_string();
             Ok(PricesResponseElem {
                 asset,
                 price: v.price,
@@ -76,31 +68,16 @@ pub fn read_prices(
         .collect()
 }
 
-pub fn store_feeder(
-    storage: &mut dyn Storage,
-    asset: &str,
-    feeder: &CanonicalAddr,
-) -> StdResult<()> {
-    let mut price_bucket: Bucket<CanonicalAddr> = Bucket::new(storage, PREFIX_FEEDER);
-    price_bucket.save(asset.as_bytes(), feeder)
+pub fn store_feeder(storage: &mut dyn Storage, asset: &str, feeder: &Addr) -> StdResult<()> {
+    FEEDER.save(storage, asset, feeder)
 }
 
-pub fn read_feeder(storage: &dyn Storage, asset: &str) -> StdResult<CanonicalAddr> {
-    let price_bucket: ReadonlyBucket<CanonicalAddr> = ReadonlyBucket::new(storage, PREFIX_FEEDER);
-    let res = price_bucket.load(asset.as_bytes());
+pub fn read_feeder(storage: &dyn Storage, asset: &str) -> StdResult<Addr> {
+    let res = FEEDER.load(storage, asset);
     match res {
         Ok(data) => Ok(data),
         Err(_err) => Err(StdError::generic_err(
             "No feeder data for the specified asset exist",
         )),
     }
-}
-
-// this will set the first key after the provided key, by appending a 1 byte
-fn calc_range_start(start_after: Option<String>) -> Option<Vec<u8>> {
-    start_after.map(|idx| {
-        let mut v = idx.as_bytes().to_vec();
-        v.push(1);
-        v
-    })
 }

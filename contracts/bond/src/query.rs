@@ -1,11 +1,12 @@
 use cosmwasm_std::{
-    to_json_binary, Decimal256, Deps, Env, StdError, SupplyResponse, Timestamp, Uint128, Uint256,
+    to_json_binary, Addr, Decimal256, Deps, Env, StdError, SupplyResponse, Timestamp, Uint128,
+    Uint256,
 };
 use oracle::msg::PriceResponse;
 
 use crate::{
     execute::current_debt,
-    state::{query_bond_price, Config, CONFIG, TERMS},
+    state::{query_bond_price, Config, BOND_INFO, CONFIG, TERMS},
     ContractError,
 };
 use staking::msg::ConfigResponse;
@@ -79,4 +80,20 @@ pub fn max_payout(deps: Deps) -> Result<Uint128, ContractError> {
     let terms = TERMS.load(deps.storage)?;
 
     Ok((Uint256::from(base_supply) * terms.max_payout).try_into()?)
+}
+
+pub fn percent_vested_for(
+    deps: Deps,
+    env: Env,
+    recipient: &Addr,
+) -> Result<Decimal256, ContractError> {
+    let bond = BOND_INFO.load(deps.storage, recipient)?;
+    // Bond memory bond = bondInfo[ _depositor ];
+    let seconds_since_last = env.block.time.seconds() - bond.last_time.seconds();
+    let vesting = bond.vesting_time_left;
+    if vesting != 0 {
+        Ok(Decimal256::from_ratio(seconds_since_last, vesting))
+    } else {
+        Ok(Decimal256::zero())
+    }
 }

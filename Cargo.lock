@@ -3066,6 +3066,7 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cosmwasm-storage",
+ "cw-storage-plus 1.1.0",
  "schemars",
  "serde",
  "thiserror",

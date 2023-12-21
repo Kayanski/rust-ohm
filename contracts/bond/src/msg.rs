@@ -9,7 +9,7 @@ pub struct InstantiateMsg {
     pub usd: String,
     pub principle: String,
     pub oracle: String,
-    pub admin: String,
+    pub admin: Option<String>,
     pub staking: String,
     pub oracle_trust_period: u64, // We recommend something along the lines of 10 minutes = 600)
     pub term: Term,
@@ -20,13 +20,9 @@ pub struct InstantiateMsg {
 #[cw_serde]
 #[cfg_attr(feature = "interface", derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
-    #[cfg_attr(feature = "interface", payable)]
-    Stake {
-        to: String,
-    },
-    #[cfg_attr(feature = "interface", payable)]
-    Unstake {
-        to: String,
+    Redeem {
+        recipient: String,
+        stake: bool,
     },
     #[cfg_attr(feature = "interface", payable)]
     Deposit {
@@ -42,6 +38,12 @@ pub enum ExecuteMsg {
         admin: Option<String>,
         staking: Option<String>,
     },
+    UpdateAdjustment {
+        add: Option<bool>,
+        rate: Option<Decimal256>,
+        target: Option<Decimal256>,
+        buffer: Option<u64>,
+    },
 }
 
 /// Message type for `migrate` entry_point
@@ -55,6 +57,4 @@ pub enum MigrateMsg {}
 pub enum QueryMsg {
     #[returns(Config)]
     Config {},
-    #[returns(Decimal256)]
-    ExchangeRate {},
 }

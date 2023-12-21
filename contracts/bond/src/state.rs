@@ -15,6 +15,7 @@ pub const TERMS: Item<Term> = Item::new("terms");
 
 pub const TOTAL_DEBT: Item<Uint128> = Item::new("total_debt");
 pub const LAST_DECAY: Item<Timestamp> = Item::new("last_decay");
+pub const ADJUSTMENT: Item<Adjustment> = Item::new("adjustment");
 
 pub const BOND_INFO: Map<&Addr, Bond> = Map::new("bond_info");
 
@@ -42,7 +43,7 @@ pub struct Market {
 
 #[cw_serde]
 pub struct Term {
-    pub control_variable: Uint128,
+    pub control_variable: Decimal256,
     pub minimum_price: Decimal256,
     pub max_payout: Decimal256,
     pub max_debt: Uint128,
@@ -58,11 +59,19 @@ pub struct Bond {
     pub last_time: Timestamp,
 }
 
+#[cw_serde]
+pub struct Adjustment {
+    pub add: bool,
+    pub rate: Decimal256,
+    pub target: Decimal256,
+    pub buffer: u64,
+    pub last_time: Timestamp,
+}
+
 pub fn bond_price(deps: DepsMut, env: Env) -> Result<Decimal256, ContractError> {
     let mut terms = TERMS.load(deps.storage)?;
 
-    let mut price =
-        Decimal256::new(terms.control_variable.into()) * debt_ratio(deps.as_ref(), env)?;
+    let mut price = terms.control_variable * debt_ratio(deps.as_ref(), env)?;
     if price < terms.minimum_price {
         price = terms.minimum_price;
     } else if !terms.minimum_price.is_zero() {
@@ -76,7 +85,7 @@ pub fn bond_price(deps: DepsMut, env: Env) -> Result<Decimal256, ContractError> 
 pub fn query_bond_price(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
     let terms = TERMS.load(deps.storage)?;
 
-    let mut price = Decimal256::new(terms.control_variable.into()) * debt_ratio(deps, env)?;
+    let mut price = terms.control_variable * debt_ratio(deps, env)?;
     if price < terms.minimum_price {
         price = terms.minimum_price;
     }
@@ -85,7 +94,7 @@ pub fn query_bond_price(deps: Deps, env: Env) -> Result<Decimal256, ContractErro
 }
 
 pub fn bond_price_in_usd(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
-    let price = query_bond_price(deps, env)? * asset_price(deps, env)?;
+    let price = query_bond_price(deps, env.clone())? * asset_price(deps, env)?;
 
     Ok(price)
 }
