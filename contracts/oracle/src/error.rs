@@ -1,28 +1,23 @@
-use cosmwasm_std::{Addr, StdError};
+use cosmwasm_std::{OverflowError, StdError};
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
 
+    #[error("{0}")]
+    OverflowError(#[from] OverflowError),
+
     #[error("Unauthorized")]
     Unauthorized {},
 
-    #[error("Unauthorized, only {address} is authorized")]
-    UnauthorizedWithAddress { address: Addr },
+    #[error("A feeder already exists for {0}, please update instead")]
+    FeederExists(String),
 
-    #[error("Custom Error val: {val:?}")]
-    CustomError { val: String },
+    #[error("There is no feeder registered for {0}, please register instead")]
+    FeederDoesntExist(String),
 
-    #[error(transparent)]
-    Cw20Error(#[from] cw20_base::ContractError),
-
-    #[error("You need to send exactly one coin with this function with denom {0}")]
-    ReceiveOneCoin(String),
-
-    #[error(transparent)]
-    ConversionOverflowError(#[from] cosmwasm_std::ConversionOverflowError),
-    // Add any other custom errors you like here.
-    // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
+    #[error("You can't provide a price equals 0")]
+    PriceCantBeZero {},
 }

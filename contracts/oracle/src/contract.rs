@@ -1,107 +1,228 @@
-use astroport::asset::{Asset, AssetInfo, PairInfo};
-use astroport::pair::PoolResponse;
+use crate::error::ContractError;
+use crate::msg::{
+    ConfigResponse, ExecuteMsg, FeederResponse, InstantiateMsg, PriceResponse, PricesResponse,
+    PricesResponseElem, QueryMsg,
+};
+use crate::state::{
+    read_config, read_feeder, read_price, read_prices, store_config, store_feeder, store_price,
+    Config, PriceInfo,
+};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
-
-use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg};
-use crate::query::{query_pair, query_pool};
-use crate::state::{PAIR_INFO, POOL_INFO};
+use cosmwasm_std::Empty;
+use cosmwasm_std::{
+    attr, to_json_binary, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    _deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: InstantiateMsg,
-) -> Result<Response, ContractError> {
-    Ok(Response::new())
+    msg: InstantiateMsg,
+) -> StdResult<Response> {
+    store_config(
+        deps.storage,
+        &Config {
+            owner: deps.api.addr_canonicalize(&msg.owner)?,
+            base_asset: msg.base_asset,
+        },
+    )?;
+
+    Ok(Response::default())
 }
 
-/// Handling contract execution
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::UpdatePair {
-            token,
-            denom1,
-            denom2,
-        } => update_pair(deps, env, token, denom1, denom2),
-        ExecuteMsg::UpdatePool {
-            total_share,
-            amount1,
-            amount2,
-        } => update_pool(deps, total_share, amount1, amount2),
+        ExecuteMsg::UpdateConfig { owner } => update_config(deps, info, owner),
+        ExecuteMsg::RegisterFeeder { asset, feeder } => register_feeder(deps, info, asset, feeder),
+        ExecuteMsg::UpdateFeeder { asset, feeder } => register_feeder(deps, info, asset, feeder),
+        ExecuteMsg::FeedPrice { prices } => feed_prices(deps, env, info, prices),
     }
 }
 
-/// Handling contract query
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(
-    deps: Deps,
-    _env: Env,
-    msg: astroport::pair::QueryMsg,
-) -> Result<Binary, ContractError> {
-    match msg {
-        astroport::pair::QueryMsg::Pair {} => Ok(to_json_binary(&query_pair(deps)?)?),
-        astroport::pair::QueryMsg::Pool {} => Ok(to_json_binary(&query_pool(deps)?)?),
-        _ => unimplemented!(),
+pub fn update_config(
+    deps: DepsMut,
+    info: MessageInfo,
+    owner: Option<String>,
+) -> Result<Response, ContractError> {
+    let mut config: Config = read_config(deps.storage)?;
+    if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
+        return Err(ContractError::Unauthorized {});
     }
+    let mut res = Response::new().add_attribute("action", "update_config");
+
+    if let Some(owner) = owner {
+        config.owner = deps.api.addr_canonicalize(&owner)?;
+        res = res.add_attribute("owner", owner);
+    }
+
+    store_config(deps.storage, &config)?;
+    Ok(res)
 }
 
-pub fn update_pair(
+pub fn register_feeder(
+    deps: DepsMut,
+    info: MessageInfo,
+    asset: String,
+    feeder: String,
+) -> Result<Response, ContractError> {
+    let config: Config = read_config(deps.storage)?;
+    if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // We don't allow storing a new feeder for a contract
+    if read_feeder(deps.storage, &asset).is_ok() {
+        return Err(ContractError::FeederExists(asset));
+    }
+
+    store_feeder(deps.storage, &asset, &deps.api.addr_canonicalize(&feeder)?)?;
+
+    Ok(Response::new().add_attributes(vec![
+        attr("action", "register_feeder"),
+        attr("asset", asset),
+        attr("feeder", feeder),
+    ]))
+}
+
+pub fn update_feeder(
+    deps: DepsMut,
+    info: MessageInfo,
+    asset: String,
+    feeder: String,
+) -> Result<Response, ContractError> {
+    let config: Config = read_config(deps.storage)?;
+    if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // We don't allow storing a new feeder if it was not registered first
+    if read_feeder(deps.storage, &asset).is_err() {
+        return Err(ContractError::FeederDoesntExist(asset));
+    }
+
+    store_feeder(deps.storage, &asset, &deps.api.addr_canonicalize(&feeder)?)?;
+
+    Ok(Response::new().add_attributes(vec![
+        attr("action", "update_feeder"),
+        attr("asset", asset),
+        attr("feeder", feeder),
+    ]))
+}
+
+pub fn feed_prices(
     deps: DepsMut,
     env: Env,
-    token: String,
-    denom1: String,
-    denom2: String,
+    info: MessageInfo,
+    prices: Vec<(String, Decimal256)>,
 ) -> Result<Response, ContractError> {
-    let new_pair_info = PairInfo {
-        asset_infos: vec![
-            AssetInfo::NativeToken { denom: denom1 },
-            AssetInfo::NativeToken { denom: denom2 },
-        ],
-        contract_addr: env.contract.address,
-        liquidity_token: deps.api.addr_validate(&token)?,
-        pair_type: astroport::factory::PairType::Xyk {},
-    };
+    let mut attributes = vec![attr("action", "feed_prices")];
+    let sender_raw = deps.api.addr_canonicalize(info.sender.as_str())?;
+    for price in prices {
+        let asset: String = price.0;
+        let price: Decimal256 = price.1;
 
-    PAIR_INFO.save(deps.storage, &new_pair_info)?;
+        if price == Decimal256::zero() {
+            return Err(ContractError::PriceCantBeZero {});
+        }
 
-    Ok(Response::new())
+        // Check feeder permission
+        let feeder = read_feeder(deps.storage, &asset)?;
+        if feeder != sender_raw {
+            return Err(ContractError::Unauthorized {});
+        }
+
+        attributes.push(attr("asset", asset.to_string()));
+        attributes.push(attr("price", price.to_string()));
+
+        store_price(
+            deps.storage,
+            &asset,
+            &PriceInfo {
+                last_updated_time: env.block.time.seconds(),
+                price,
+            },
+        )?;
+    }
+
+    Ok(Response::new().add_attributes(attributes))
 }
 
-pub fn update_pool(
-    deps: DepsMut,
-    total_share: Uint128,
-    amount1: Uint128,
-    amount2: Uint128,
-) -> Result<Response, ContractError> {
-    let pair_info = PAIR_INFO.load(deps.storage)?;
-    let new_pool_info = PoolResponse {
-        assets: vec![
-            Asset {
-                info: pair_info.asset_infos[0].clone(),
-                amount: amount1,
-            },
-            Asset {
-                info: pair_info.asset_infos[1].clone(),
-                amount: amount2,
-            },
-        ],
-        total_share,
-    };
-
-    POOL_INFO.save(deps.storage, &new_pool_info)?;
-
-    Ok(Response::new())
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
+        QueryMsg::Feeder { asset } => to_json_binary(&query_feeder(deps, asset)?),
+        QueryMsg::Price { base, quote } => to_json_binary(&query_price(deps, base, quote)?),
+        QueryMsg::Prices { start_after, limit } => {
+            to_json_binary(&query_prices(deps, start_after, limit)?)
+        }
+    }
 }
 
-#[cfg(test)]
-pub mod test {}
+fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
+    let state = read_config(deps.storage)?;
+    let resp = ConfigResponse {
+        owner: deps.api.addr_humanize(&state.owner)?.to_string(),
+        base_asset: state.base_asset,
+    };
+
+    Ok(resp)
+}
+
+fn query_feeder(deps: Deps, asset: String) -> StdResult<FeederResponse> {
+    let feeder = read_feeder(deps.storage, &asset)?;
+    let resp = FeederResponse {
+        asset,
+        feeder: deps.api.addr_humanize(&feeder)?.to_string(),
+    };
+
+    Ok(resp)
+}
+
+fn query_price(deps: Deps, base: String, quote: String) -> StdResult<PriceResponse> {
+    let config: Config = read_config(deps.storage)?;
+    let quote_price = if config.base_asset == quote {
+        PriceInfo {
+            price: Decimal256::one(),
+            last_updated_time: 9999999999,
+        }
+    } else {
+        read_price(deps.storage, &quote)?
+    };
+
+    let base_price = if config.base_asset == base {
+        PriceInfo {
+            price: Decimal256::one(),
+            last_updated_time: 9999999999,
+        }
+    } else {
+        read_price(deps.storage, &base)?
+    };
+
+    Ok(PriceResponse {
+        rate: base_price.price / quote_price.price,
+        last_updated_base: base_price.last_updated_time,
+        last_updated_quote: quote_price.last_updated_time,
+    })
+}
+
+fn query_prices(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<PricesResponse> {
+    let prices: Vec<PricesResponseElem> = read_prices(deps.storage, start_after, limit)?;
+    Ok(PricesResponse { prices })
+}
+
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    Ok(Response::default())
+}

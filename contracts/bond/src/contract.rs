@@ -1,17 +1,12 @@
-use cosmos_sdk_proto::cosmos::feegrant::v1beta1::MsgGrantAllowance;
-use cosmos_sdk_proto::traits::Message;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    to_json_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, Uint128,
-};
-use injective_std::types::injective::tokenfactory::v1beta1::{MsgCreateDenom, MsgMint};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::{ContractError, ContractResult};
-use crate::execute::{stake, unstake};
+use crate::execute::deposit;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::query::{query_config, query_exchange_rate, staking_denom};
-use crate::state::{Config, Term, CONFIG, CURRENT_DEBT, LAST_DECAY, STAKING_TOKEN_DENOM, TERMS};
+use crate::query::query_config;
+use crate::state::{Config, Term, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT};
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -21,16 +16,19 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let config = Config {
+        usd: msg.usd,
         principle: msg.principle,
-        pair: deps.api.addr_validate(&msg.pair)?,
+        oracle: deps.api.addr_validate(&msg.oracle)?,
         admin: deps.api.addr_validate(&msg.admin)?,
         staking: deps.api.addr_validate(&msg.staking)?,
+        oracle_trust_period: msg.oracle_trust_period,
+        treasury: deps.api.addr_validate(&msg.treasury)?,
     };
 
     CONFIG.save(deps.storage, &config)?;
     TERMS.save(deps.storage, &msg.term)?;
     LAST_DECAY.save(deps.storage, &env.block.time)?;
-    CURRENT_DEBT.save(deps.storage, &Uint128::zero())?;
+    TOTAL_DEBT.save(deps.storage, &Uint128::zero())?;
 
     Ok(Response::new())
 }

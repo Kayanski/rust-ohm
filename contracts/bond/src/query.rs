@@ -1,78 +1,82 @@
-use cosmwasm_std::{Decimal256, Deps, Env, StdError, SupplyResponse, Uint128};
+use cosmwasm_std::{
+    to_json_binary, Decimal256, Deps, Env, StdError, SupplyResponse, Timestamp, Uint128, Uint256,
+};
+use oracle::msg::PriceResponse;
 
 use crate::{
-    state::{Config, CONFIG},
+    execute::current_debt,
+    state::{query_bond_price, Config, CONFIG, TERMS},
     ContractError,
 };
+use staking::msg::ConfigResponse;
 
-pub fn debt_ratio(deps: Deps) -> Result<Decimal256, ContractError> {
+pub fn total_base_supply(deps: Deps) -> Result<Uint128, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let staking_config: ConfigResponse = deps.querier.query(cosmwasm_std::QueryRequest::Wasm(
+    let staking_config: ConfigResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Wasm(
         cosmwasm_std::WasmQuery::Smart {
             contract_addr: config.staking.to_string(),
-            msg: to_binary(&staking::msg::QueryMsg::Config {})?,
+            msg: to_json_binary(&staking::msg::QueryMsg::Config {})?,
         },
     ))?;
-    let supply = deps.querier.query(cosmwasm_std::QueryRequest::Bank(
-        cosmwasm_std::BankQuery::Supply { denom: () },
-    ));
+    let supply: SupplyResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Bank(
+        cosmwasm_std::BankQuery::Supply {
+            denom: staking_config.ohm,
+        },
+    ))?;
+    Ok(supply.amount.amount)
+}
 
-    // uint supply = IERC20( OHM ).totalSupply();
-    // debtRatio_ = FixedPoint.fraction(
-    //     currentDebt().mul( 1e9 ),
-    //     supply
-    // ).decode112with18().div( 1e18 );
+pub fn debt_ratio(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
+    let base_supply = total_base_supply(deps)?;
+
+    Ok(Decimal256::from_ratio(
+        current_debt(deps, env)?,
+        base_supply,
+    ))
 }
 
 pub fn circulating_supply(deps: Deps) -> Result<Uint128, ContractError> {
     Ok(cw20_base::contract::query_token_info(deps)?.total_supply)
-}
-/**
- *  @notice calculate current bond price and remove floor if above
- *  @return price_ uint
- */
-
-pub fn token_balance(deps: Deps, env: &Env) -> Result<Uint128, StdError> {
-    let config = CONFIG.load(deps.storage)?;
-    let balance: cosmwasm_std::BalanceResponse = deps.querier.query(
-        &cosmwasm_std::QueryRequest::Bank(cosmwasm_std::BankQuery::Balance {
-            address: env.contract.address.to_string(),
-            denom: config.ohm,
-        }),
-    )?;
-
-    Ok(balance.amount.amount)
-}
-
-/// This represents the value of each staking token compared to the base token
-/// For instance, if this contracts hold 100 CW20 and has minted 80 sCW20, the exchange rate is 100/80 = 1.25
-pub fn current_exchange_rate(
-    deps: Deps,
-    env: &Env,
-    deposit: Option<Uint128>,
-    deposit_staked: Option<Uint128>,
-) -> Result<Decimal256, ContractError> {
-    let deposited_amount = token_balance(deps, env)? - deposit.unwrap_or(Uint128::zero());
-
-    let minted_staked_currency: SupplyResponse = deps.querier.query(
-        &cosmwasm_std::QueryRequest::Bank(cosmwasm_std::BankQuery::Supply {
-            denom: staking_denom(env),
-        }),
-    )?;
-
-    let staked_amount = minted_staked_currency.amount.amount - deposit_staked.unwrap_or_default();
-
-    if staked_amount == Uint128::zero() || deposited_amount <= staked_amount {
-        Ok(Decimal256::one())
-    } else {
-        Ok(Decimal256::from_ratio(deposited_amount, staked_amount))
-    }
 }
 
 pub fn query_config(deps: Deps) -> Result<Config, ContractError> {
     Ok(CONFIG.load(deps.storage)?)
 }
 
-pub fn query_exchange_rate(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
-    current_exchange_rate(deps, &env, None, None)
+pub fn asset_price(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    // We query the price from the oracle
+    let price: PriceResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Wasm(
+        cosmwasm_std::WasmQuery::Smart {
+            contract_addr: config.oracle.to_string(),
+            msg: to_json_binary(&oracle::msg::QueryMsg::Price {
+                base: config.usd,
+                quote: config.principle,
+            })?,
+        },
+    ))?;
+
+    // We assert the price is not too old
+    if Timestamp::from_seconds(price.last_updated_base).plus_seconds(config.oracle_trust_period)
+        < env.block.time
+        || Timestamp::from_seconds(price.last_updated_quote)
+            .plus_seconds(config.oracle_trust_period)
+            < env.block.time
+    {
+        Err(StdError::generic_err("Price data is too old for bonding"))?;
+    }
+    Ok(price.rate)
+}
+
+pub fn payout_for(deps: Deps, env: Env, value: Uint128) -> Result<Uint128, ContractError> {
+    let payout = Decimal256::new(value.into()) / query_bond_price(deps, env)?;
+
+    Ok((payout * Uint256::one()).try_into()?)
+}
+
+pub fn max_payout(deps: Deps) -> Result<Uint128, ContractError> {
+    let base_supply = total_base_supply(deps)?;
+    let terms = TERMS.load(deps.storage)?;
+
+    Ok((Uint256::from(base_supply) * terms.max_payout).try_into()?)
 }

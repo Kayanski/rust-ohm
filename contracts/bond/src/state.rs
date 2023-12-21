@@ -2,22 +2,31 @@
 // see: https://crates.io/crates/cw-storage-plus
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal256, Timestamp, Uint128};
-use cw_storage_plus::Item;
+use cosmwasm_std::{Addr, Decimal256, Deps, DepsMut, Env, Timestamp, Uint128};
+use cw_storage_plus::{Item, Map};
+
+use crate::{
+    query::{asset_price, debt_ratio},
+    ContractError,
+};
 
 pub const CONFIG: Item<Config> = Item::new("config");
-pub const MARKETS: Item<Vec<Market>> = Item::new("markets");
 pub const TERMS: Item<Term> = Item::new("terms");
 
-pub const CURRENT_DEBT: Item<Uint128> = Item::new("current_debt");
+pub const TOTAL_DEBT: Item<Uint128> = Item::new("total_debt");
 pub const LAST_DECAY: Item<Timestamp> = Item::new("last_decay");
+
+pub const BOND_INFO: Map<&Addr, Bond> = Map::new("bond_info");
 
 #[cw_serde]
 pub struct Config {
+    pub usd: String,
     pub principle: String,
-    pub pair: Addr,
     pub admin: Addr,
     pub staking: Addr,
+    pub oracle: Addr,
+    pub oracle_trust_period: u64, // in Seconds
+    pub treasury: Addr,
 }
 
 #[cw_serde]
@@ -35,28 +44,48 @@ pub struct Market {
 pub struct Term {
     pub control_variable: Uint128,
     pub minimum_price: Decimal256,
-    pub max_payout: Uint128,
+    pub max_payout: Decimal256,
     pub max_debt: Uint128,
     pub vesting_term: u64,
 }
 
 #[cw_serde]
+#[derive(Default)]
 pub struct Bond {
     pub payout: Uint128,
     pub price_paid: Decimal256,
-    pub vesting_time_left: Uint128,
-    pub last_time: Uint128,
+    pub vesting_time_left: u64,
+    pub last_time: Timestamp,
 }
 
-pub fn bondPrice(deps: Deps) -> Result<Uint128, ContractError> {
-    let terms = TERMS.load(deps.storage)?;
+pub fn bond_price(deps: DepsMut, env: Env) -> Result<Decimal256, ContractError> {
+    let mut terms = TERMS.load(deps.storage)?;
 
-    let price = terms.control_variable * debt_ratio();
+    let mut price =
+        Decimal256::new(terms.control_variable.into()) * debt_ratio(deps.as_ref(), env)?;
     if price < terms.minimum_price {
         price = terms.minimum_price;
     } else if !terms.minimum_price.is_zero() {
         terms.minimum_price = Decimal256::zero();
     };
+
+    TERMS.save(deps.storage, &terms)?;
+
+    Ok(price)
+}
+pub fn query_bond_price(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
+    let terms = TERMS.load(deps.storage)?;
+
+    let mut price = Decimal256::new(terms.control_variable.into()) * debt_ratio(deps, env)?;
+    if price < terms.minimum_price {
+        price = terms.minimum_price;
+    }
+
+    Ok(price)
+}
+
+pub fn bond_price_in_usd(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
+    let price = query_bond_price(deps, env)? * asset_price(deps, env)?;
 
     Ok(price)
 }

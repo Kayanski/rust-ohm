@@ -42,8 +42,9 @@ schemars = "0.8"
 
 cw-orch = { git = "https://github.com/abstractsdk/cw-orchestrator", branch = "update/injective-test-tube" }
 # cw-orch = { path = "../../abstract/cw-orchestrator/cw-orch" }
-staking = { path = "contracts/staking", features = ["interface", "library"] }
-bond = { path = "contracts/bond", features = ["interface", "library"] }
+staking = { path = "contracts/staking" }
+bond = { path = "contracts/bond" }
+oracle = { path = "contracts/oracle" }
 injective-std = { path = "packages/injective-std" }
 
 # Backup release profile, will result in warnings during optimization

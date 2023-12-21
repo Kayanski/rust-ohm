@@ -1,44 +1,82 @@
-use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Decimal256, Uint128};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-/// Message type for `instantiate` entry_point
-#[cw_serde]
-pub struct InstantiateMsg {}
+use cosmwasm_std::Decimal256;
 
-/// Message type for `execute` entry_point
-#[cw_serde]
-#[cfg_attr(feature = "interface", derive(cw_orch::ExecuteFns))]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct InstantiateMsg {
+    pub owner: String,
+    pub base_asset: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    UpdatePair {
-        token: String,
-        denom1: String,
-        denom2: String,
+    UpdateConfig {
+        owner: Option<String>,
     },
-    UpdatePool {
-        total_share: Uint128,
-        amount1: Uint128,
-        amount2: Uint128,
+    RegisterFeeder {
+        asset: String,
+        feeder: String,
+    },
+    UpdateFeeder {
+        asset: String,
+        feeder: String,
+    },
+    FeedPrice {
+        prices: Vec<(String, Decimal256)>, // (asset, price)
     },
 }
 
-/// Message type for `migrate` entry_point
-#[cw_serde]
-pub enum MigrateMsg {}
-
-/// Message type for `query` entry_point
-#[cw_serde]
-#[derive(QueryResponses)]
-#[cfg_attr(feature = "interface", derive(cw_orch::QueryFns))]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    #[returns(PriceResponse)]
+    Config {},
+    Feeder {
+        asset: String,
+    },
     Price {
-        pair: String,
-        token_in: String,
-        token_out: String,
+        base: String,
+        quote: String,
+    },
+    Prices {
+        start_after: Option<String>,
+        limit: Option<u32>,
     },
 }
 
-#[cw_serde]
+// We define a custom struct for each query response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ConfigResponse {
+    pub owner: String,
+    pub base_asset: String,
+}
+
+// We define a custom struct for each query response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct FeederResponse {
+    pub asset: String,
+    pub feeder: String,
+}
+
+// We define a custom struct for each query response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct PriceResponse {
-    pub current_price: Decimal256,
+    pub rate: Decimal256,
+    pub last_updated_base: u64,
+    pub last_updated_quote: u64,
+}
+
+// We define a custom struct for each query response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct PricesResponseElem {
+    pub asset: String,
+    pub price: Decimal256,
+    pub last_updated_time: u64,
+}
+
+// We define a custom struct for each query response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct PricesResponse {
+    pub prices: Vec<PricesResponseElem>,
 }

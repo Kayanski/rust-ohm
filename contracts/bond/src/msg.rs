@@ -6,11 +6,14 @@ use crate::state::{Config, Term};
 /// Message type for `instantiate` entry_point
 #[cw_serde]
 pub struct InstantiateMsg {
+    pub usd: String,
     pub principle: String,
-    pub pair: String,
+    pub oracle: String,
     pub admin: String,
     pub staking: String,
+    pub oracle_trust_period: u64, // We recommend something along the lines of 10 minutes = 600)
     pub term: Term,
+    pub treasury: String,
 }
 
 /// Message type for `execute` entry_point
