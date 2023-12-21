@@ -133,7 +133,7 @@ pub fn redeem(
     } else {
         let payout = Uint256::from(bond.payout) * percent_vested;
 
-        bond.payout += Uint128::try_from(payout)?;
+        bond.payout -= Uint128::try_from(payout)?;
         bond.vesting_time_left -= env.block.time.seconds() - bond.last_time.seconds();
         bond.last_time = env.block.time;
 
