@@ -258,9 +258,6 @@ pub mod test {
 
         let block_info = chain.block_info()?;
 
-        let contract = Bond::new("bond", chain.clone());
-        contract.upload()?;
-
         let treasury = chain.init_account(vec![])?;
 
         let oracle = Oracle::new("oracle", chain.clone());
@@ -294,7 +291,9 @@ pub mod test {
             Some(&coins(AMOUNT_TO_CREATE_DENOM * 2, "inj")),
         )?;
 
-        contract.instantiate(
+        let bond = Bond::new("bond", chain.clone());
+        bond.upload()?;
+        bond.instantiate(
             &bond::msg::InstantiateMsg {
                 admin: None,
                 oracle: oracle.address()?.to_string(),
@@ -312,18 +311,18 @@ pub mod test {
                 },
             },
             None,
-            Some(&coins(AMOUNT_TO_CREATE_DENOM, "inj")),
+            None,
         )?;
 
         staking.update_config(
-            Some(vec![contract.address()?.to_string()]),
+            Some(vec![bond.address()?.to_string()]),
             None,
             None,
             None,
             None,
         )?;
 
-        Ok((contract, treasury))
+        Ok((bond, treasury))
     }
 
     #[test]
