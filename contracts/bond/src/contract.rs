@@ -61,10 +61,23 @@ pub fn execute(
         ExecuteMsg::UpdateTerms { terms } => update_terms(deps, info, terms),
         ExecuteMsg::UpdateConfig {
             principle,
-            pair,
             admin,
             staking,
-        } => update_config(deps, info, principle, pair, admin, staking),
+            usd,
+            oracle,
+            oracle_trust_period,
+            treasury,
+        } => update_config(
+            deps,
+            info,
+            usd,
+            principle,
+            admin,
+            staking,
+            oracle,
+            oracle_trust_period,
+            treasury,
+        ),
         ExecuteMsg::UpdateAdjustment {
             add,
             rate,
@@ -111,30 +124,39 @@ pub fn update_terms(deps: DepsMut, info: MessageInfo, terms: Term) -> ContractRe
 pub fn update_config(
     deps: DepsMut,
     info: MessageInfo,
+    usd: Option<String>,
     principle: Option<String>,
-    pair: Option<String>,
     admin: Option<String>,
     staking: Option<String>,
+    oracle: Option<String>,
+    oracle_trust_period: Option<u64>,
+    treasury: Option<String>,
 ) -> ContractResult {
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
         return Err(ContractError::Unauthorized {});
     }
 
+    if let Some(usd) = usd {
+        config.usd = usd;
+    }
     if let Some(principle) = principle {
         config.principle = principle;
     }
-
-    if let Some(pair) = pair {
-        config.principle = pair;
-    }
-
     if let Some(admin) = admin {
         config.admin = deps.api.addr_validate(&admin)?;
     }
-
     if let Some(staking) = staking {
         config.staking = deps.api.addr_validate(&staking)?;
+    }
+    if let Some(oracle) = oracle {
+        config.oracle = deps.api.addr_validate(&oracle)?;
+    }
+    if let Some(oracle_trust_period) = oracle_trust_period {
+        config.oracle_trust_period = oracle_trust_period;
+    }
+    if let Some(treasury) = treasury {
+        config.treasury = deps.api.addr_validate(&treasury)?;
     }
 
     CONFIG.save(deps.storage, &config)?;

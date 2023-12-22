@@ -33,10 +33,13 @@ pub enum ExecuteMsg {
         terms: Term,
     },
     UpdateConfig {
+        usd: Option<String>,
         principle: Option<String>,
-        pair: Option<String>,
         admin: Option<String>,
         staking: Option<String>,
+        oracle: Option<String>,
+        oracle_trust_period: Option<u64>,
+        treasury: Option<String>,
     },
     UpdateAdjustment {
         add: Option<bool>,
