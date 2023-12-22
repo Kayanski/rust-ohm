@@ -5,10 +5,15 @@ use cosmwasm_std::{
 };
 
 use crate::error::{ContractError, ContractResult, QueryResult};
-use crate::execute::{deposit, redeem};
+use crate::execute::{current_debt, debt_decay, deposit, redeem};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::query::query_config;
-use crate::state::{Config, Term, ADJUSTMENT, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT};
+use crate::query::{
+    asset_price, debt_ratio, max_payout, payout_for, pending_payout_for, percent_vested_for,
+    query_config, standardized_debt_ratio,
+};
+use crate::state::{
+    query_bond_price, Config, Term, ADJUSTMENT, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT,
+};
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -71,9 +76,27 @@ pub fn execute(
 
 /// Handling contract query
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> QueryResult {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> QueryResult {
     match msg {
         QueryMsg::Config {} => Ok(to_json_binary(&query_config(deps)?)?),
+        QueryMsg::MaxPayout {} => Ok(to_json_binary(&max_payout(deps)?)?),
+        QueryMsg::PayoutFor { value } => Ok(to_json_binary(&payout_for(deps, env, value)?)?),
+        QueryMsg::BondPrice {} => Ok(to_json_binary(&query_bond_price(deps, env)?)?),
+        QueryMsg::AssetPrice {} => Ok(to_json_binary(&asset_price(deps, env)?)?),
+        QueryMsg::DebtRatio {} => Ok(to_json_binary(&debt_ratio(deps, env)?)?),
+        QueryMsg::StandardizedDebtRatio {} => {
+            Ok(to_json_binary(&standardized_debt_ratio(deps, env)?)?)
+        }
+        QueryMsg::CurrentDebt {} => Ok(to_json_binary(&current_debt(deps, env)?)?),
+        QueryMsg::DebtDecay {} => Ok(to_json_binary(&debt_decay(deps, env)?)?),
+        QueryMsg::PercentVestedFor { recipient } => Ok(to_json_binary(&percent_vested_for(
+            deps,
+            env,
+            &deps.api.addr_validate(&recipient)?,
+        )?)?),
+        QueryMsg::PendingPayoutFor { recipient } => {
+            Ok(to_json_binary(&pending_payout_for(deps, env, recipient)?)?)
+        }
     }
 }
 

@@ -36,6 +36,12 @@ pub fn debt_ratio(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
     ))
 }
 
+pub fn standardized_debt_ratio(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
+    let debt_ratio = debt_ratio(deps, env.clone())?;
+
+    Ok(debt_ratio * asset_price(deps, env)?)
+}
+
 pub fn circulating_supply(deps: Deps) -> Result<Uint128, ContractError> {
     Ok(cw20_base::contract::query_token_info(deps)?.total_supply)
 }
@@ -73,6 +79,24 @@ pub fn payout_for(deps: Deps, env: Env, value: Uint128) -> Result<Uint128, Contr
     let payout = Decimal256::new(value.into()) / query_bond_price(deps, env)?;
 
     Ok((payout * Uint256::one()).try_into()?)
+}
+
+pub fn pending_payout_for(
+    deps: Deps,
+    env: Env,
+    recipient: String,
+) -> Result<Uint128, ContractError> {
+    let recipient_addr = deps.api.addr_validate(&recipient)?;
+    let percent_vested = percent_vested_for(deps, env, &recipient_addr)?;
+    let bond = BOND_INFO
+        .load(deps.storage, &recipient_addr)
+        .unwrap_or_default();
+
+    if percent_vested > Decimal256::one() {
+        Ok(bond.payout)
+    } else {
+        Ok((Uint256::from(bond.payout) * percent_vested).try_into()?)
+    }
 }
 
 pub fn max_payout(deps: Deps) -> Result<Uint128, ContractError> {

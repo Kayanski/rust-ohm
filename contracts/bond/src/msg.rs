@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Decimal256;
+use cosmwasm_std::{Decimal256, Uint128};
 
 use crate::state::{Config, Term};
 
@@ -57,4 +57,24 @@ pub enum MigrateMsg {}
 pub enum QueryMsg {
     #[returns(Config)]
     Config {},
+    #[returns(Uint128)]
+    MaxPayout {},
+    #[returns(Uint128)]
+    PayoutFor { value: Uint128 },
+    #[returns(Decimal256)]
+    BondPrice {},
+    #[returns(Decimal256)]
+    AssetPrice {},
+    #[returns(Decimal256)]
+    DebtRatio {},
+    #[returns(Decimal256)]
+    StandardizedDebtRatio {},
+    #[returns(Uint128)]
+    CurrentDebt {},
+    #[returns(Decimal256)]
+    DebtDecay {},
+    #[returns(Decimal256)]
+    PercentVestedFor { recipient: String },
+    #[returns(Decimal256)]
+    PendingPayoutFor { recipient: String },
 }
