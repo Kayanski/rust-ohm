@@ -1,6 +1,7 @@
 use cosmos_sdk_proto::traits::Message;
 use cosmwasm_std::{
-    BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response, Uint128, Uint256,
+    BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response, StdError, Uint128,
+    Uint256,
 };
 use injective_std::types::injective::tokenfactory::v1beta1::{MsgBurn, MsgMint};
 
@@ -27,7 +28,7 @@ pub fn rebase(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response, C
     let current_balance = token_balance(deps.as_ref(), &env)?;
     let rebase_amount = Uint256::from(current_balance) * config.epoch_apr;
 
-    // Mint some new ohm to this contract : this is where the APR coms from !
+    // Mint some new ohm to this contract : this is where the APR comes from !
     let msg = CosmosMsg::Stargate {
         type_url: MsgMint::TYPE_URL.to_string(),
         value: MsgMint {
@@ -57,7 +58,7 @@ pub fn stake(
 ) -> Result<Response, ContractError> {
     let deposited_amount = deposit_one_coin(info, base_denom(&env))?;
 
-    let exchange_rate = current_exchange_rate(deps.as_ref(), &env, Some(deposited_amount), None)?;
+    let exchange_rate = current_exchange_rate(deps.as_ref(), &env, Some(deposited_amount))?;
 
     let mint_amount =
         (Decimal256::from_ratio(deposited_amount, 1u128) / exchange_rate) * Uint256::one();
@@ -76,14 +77,13 @@ pub fn unstake(
 ) -> Result<Response, ContractError> {
     let deposited_amount = deposit_one_coin(info, staking_denom(&env))?;
 
-    let exchange_rate = current_exchange_rate(deps.as_ref(), &env, None, Some(deposited_amount))?;
+    let exchange_rate = current_exchange_rate(deps.as_ref(), &env, None)?;
 
-    let redeem_amount =
-        (Decimal256::from_ratio(deposited_amount, 1u128) * exchange_rate) * Uint256::one();
+    let redeem_amount = Uint256::from(deposited_amount) * exchange_rate;
 
     // We burn the received sOHM from this contract
     let burn_msg = CosmosMsg::Stargate {
-        type_url: MsgMint::TYPE_URL.to_string(),
+        type_url: MsgBurn::TYPE_URL.to_string(),
         value: MsgBurn {
             sender: env.contract.address.to_string(),
             amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
@@ -114,7 +114,13 @@ pub fn mint(
     to: String,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    let minter_info = MINTER_INFO.load(deps.storage, info.sender)?;
+    let minter_info =
+        MINTER_INFO
+            .load(deps.storage, &info.sender)
+            .or(Err(StdError::generic_err(format!(
+                "{} is not authorized to mint on staking",
+                info.sender
+            ))))?;
     if !minter_info.can_mint {
         return Err(ContractError::Unauthorized {});
     }

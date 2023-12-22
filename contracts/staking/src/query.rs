@@ -34,7 +34,6 @@ pub fn current_exchange_rate(
     deps: Deps,
     env: &Env,
     deposit: Option<Uint128>,
-    deposit_staked: Option<Uint128>,
 ) -> Result<Decimal256, ContractError> {
     let deposited_amount = token_balance(deps, env)? - deposit.unwrap_or(Uint128::zero());
 
@@ -44,7 +43,7 @@ pub fn current_exchange_rate(
         }),
     )?;
 
-    let staked_amount = minted_staked_currency.amount.amount - deposit_staked.unwrap_or_default();
+    let staked_amount = minted_staked_currency.amount.amount;
 
     if staked_amount == Uint128::zero() || deposited_amount <= staked_amount {
         Ok(Decimal256::one())
@@ -66,5 +65,5 @@ pub fn query_config(deps: Deps, env: Env) -> Result<ConfigResponse, ContractErro
 }
 
 pub fn query_exchange_rate(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
-    current_exchange_rate(deps, &env, None, None)
+    current_exchange_rate(deps, &env, None)
 }

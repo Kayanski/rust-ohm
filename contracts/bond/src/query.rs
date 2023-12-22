@@ -6,7 +6,7 @@ use oracle::msg::PriceResponse;
 
 use crate::{
     execute::current_debt,
-    state::{query_bond_price, Config, BOND_INFO, CONFIG, TERMS},
+    state::{query_bond_price, Bond, Config, BOND_INFO, CONFIG, TERMS},
     ContractError,
 };
 use staking::msg::ConfigResponse;
@@ -53,15 +53,21 @@ pub fn query_config(deps: Deps) -> Result<Config, ContractError> {
 pub fn asset_price(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     // We query the price from the oracle
-    let price: PriceResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Wasm(
-        cosmwasm_std::WasmQuery::Smart {
-            contract_addr: config.oracle.to_string(),
-            msg: to_json_binary(&oracle::msg::QueryMsg::Price {
-                base: config.usd,
-                quote: config.principle,
-            })?,
-        },
-    ))?;
+    let price: PriceResponse = deps
+        .querier
+        .query(&cosmwasm_std::QueryRequest::Wasm(
+            cosmwasm_std::WasmQuery::Smart {
+                contract_addr: config.oracle.to_string(),
+                msg: to_json_binary(&oracle::msg::QueryMsg::Price {
+                    base: config.principle.clone(),
+                    quote: config.usd.clone(),
+                })?,
+            },
+        ))
+        .or(Err(StdError::generic_err(format!(
+            "Error when querying oracle price for {}-{}",
+            config.usd, config.principle
+        ))))?;
 
     // We assert the price is not too old
     if Timestamp::from_seconds(price.last_updated_base).plus_seconds(config.oracle_trust_period)
@@ -76,7 +82,7 @@ pub fn asset_price(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
 }
 
 pub fn payout_for(deps: Deps, env: Env, value: Uint128) -> Result<Uint128, ContractError> {
-    let payout = Decimal256::new(value.into()) / query_bond_price(deps, env)?;
+    let payout = Decimal256::from_ratio(value, 1u128) / query_bond_price(deps, env)?;
 
     Ok((payout * Uint256::one()).try_into()?)
 }
@@ -120,4 +126,10 @@ pub fn percent_vested_for(
     } else {
         Ok(Decimal256::zero())
     }
+}
+
+pub fn bond_info(deps: Deps, recipient: String) -> Result<Bond, ContractError> {
+    Ok(BOND_INFO
+        .load(deps.storage, &deps.api.addr_validate(&recipient)?)
+        .unwrap_or_default())
 }

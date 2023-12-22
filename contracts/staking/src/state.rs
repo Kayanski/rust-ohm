@@ -7,7 +7,7 @@ use cw_storage_plus::{Item, Map};
 
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const EPOCH_STATE: Item<EpochState> = Item::new("epoch_state");
-pub const MINTER_INFO: Map<Addr, MinterInfo> = Map::new("minter_info");
+pub const MINTER_INFO: Map<&Addr, MinterInfo> = Map::new("minter_info");
 
 pub const STAKING_TOKEN_DENOM: &str = "staking_token";
 pub const BASE_TOKEN_DENOM: &str = "base_token";

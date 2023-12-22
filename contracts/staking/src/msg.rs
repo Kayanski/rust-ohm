@@ -32,6 +32,8 @@ pub enum ExecuteMsg {
         admin: Option<String>,
         epoch_length: Option<u64>,
         epoch_apr: Option<Decimal256>,
+        add_minter: Option<Vec<String>>,
+        remove_minter: Option<Vec<String>>,
     },
 }
 
