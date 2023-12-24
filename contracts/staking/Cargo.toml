@@ -26,7 +26,7 @@ injective-std = { workspace = true }
 
 
 [dev-dependencies]
-anyhow = "1.0.75"
+anyhow = { version = "1.0.75", features = ["backtrace"] }
 cw-orch = { workspace = true, features = ["injective-test-tube", "eth"] }
 serde = "1.0.193"
 staking = { path = ".", features = ["interface"] }

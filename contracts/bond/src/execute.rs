@@ -54,11 +54,11 @@ pub fn deposit(
     let deposited_amount = deposit_one_coin(info.clone(), config.principle.clone())?;
 
     decay_debt(deps.branch(), env.clone(), info)?;
-    let current_debt = TOTAL_DEBT.load(deps.storage)?;
+    let total_debt = TOTAL_DEBT.load(deps.storage)?;
     let terms = TERMS.load(deps.storage)?;
 
     ensure!(
-        current_debt <= terms.max_debt,
+        total_debt <= terms.max_debt,
         StdError::generic_err("Max capacity reached")
     );
 
@@ -132,6 +132,10 @@ pub fn redeem(
         stake_or_send(deps.as_ref(), recipient_addr, stake, bond.payout)
     } else {
         let payout = Uint256::from(bond.payout) * percent_vested;
+
+        if payout.is_zero() {
+            Err(StdError::generic_err("Nothing to redeem here !"))?;
+        }
 
         bond.payout -= Uint128::try_from(payout)?;
         bond.vesting_time_left -= env.block.time.seconds() - bond.last_time.seconds();

@@ -8,11 +8,11 @@ use crate::error::{ContractError, ContractResult, QueryResult};
 use crate::execute::{current_debt, debt_decay, deposit, redeem};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::{
-    asset_price, debt_ratio, max_payout, payout_for, pending_payout_for, percent_vested_for,
-    query_config, standardized_debt_ratio,
+    asset_price, bond_info, debt_ratio, max_payout, payout_for, pending_payout_for,
+    percent_vested_for, query_config, standardized_debt_ratio,
 };
 use crate::state::{
-    query_bond_price, Config, Term, ADJUSTMENT, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT,
+    query_bond_price, Adjustment, Config, Term, ADJUSTMENT, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT,
 };
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -40,6 +40,16 @@ pub fn instantiate(
     TERMS.save(deps.storage, &msg.term)?;
     LAST_DECAY.save(deps.storage, &env.block.time)?;
     TOTAL_DEBT.save(deps.storage, &Uint128::zero())?;
+    ADJUSTMENT.save(
+        deps.storage,
+        &Adjustment {
+            add: true,
+            rate: Decimal256::zero(),
+            target: Decimal256::zero(),
+            buffer: 0,
+            last_time: env.block.time,
+        },
+    )?;
 
     Ok(Response::new())
 }
@@ -110,6 +120,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> QueryResult {
         QueryMsg::PendingPayoutFor { recipient } => {
             Ok(to_json_binary(&pending_payout_for(deps, env, recipient)?)?)
         }
+        QueryMsg::BondInfo { recipient } => Ok(to_json_binary(&bond_info(deps, recipient)?)?),
     }
 }
 
@@ -121,6 +132,7 @@ pub fn update_terms(deps: DepsMut, info: MessageInfo, terms: Term) -> ContractRe
     Ok(Response::new())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_config(
     deps: DepsMut,
     info: MessageInfo,
@@ -200,41 +212,117 @@ pub fn update_adjustment(
 
 #[cfg(test)]
 pub mod test {
-    use anyhow::bail;
+    use std::rc::Rc;
+    use std::str::FromStr;
+
+    use cosmwasm_std::coin;
     use cosmwasm_std::coins;
+    use cosmwasm_std::Decimal256;
+    use cosmwasm_std::Uint128;
+    use cw_orch::injective_test_tube::injective_test_tube::SigningAccount;
     use cw_orch::{injective_test_tube::InjectiveTestTube, prelude::*};
 
+    use bond::interface::Bond;
+    use bond::msg::ExecuteMsgFns as _;
+    use bond::msg::QueryMsgFns;
     use cw_orch::injective_test_tube::injective_test_tube::Account;
+    use oracle::interface::Oracle;
+    use oracle::msg::ExecuteMsgFns as _;
     use staking::interface::Staking;
-    use staking::msg::ExecuteMsgFns;
-    use staking::msg::InstantiateMsg;
-    use staking::msg::QueryMsgFns;
-    use tests::tokenfactory::mint_denom;
-    use tests::tokenfactory::tokenfactory_denom;
-    use tests::tokenfactory::{assert_balance, create_denom};
-    pub const MAIN_TOKEN: &str = "OHM";
+    use staking::msg::ExecuteMsgFns as _;
+    use staking::msg::QueryMsgFns as _;
+    use tests::tokenfactory::assert_balance;
+
+    use bond::state::Term;
+
     pub const AMOUNT_TO_CREATE_DENOM: u128 = 10_000_000_000_000_000_000u128;
     pub const FUNDS_MULTIPLIER: u128 = 100_000;
+    pub const BOND_TOKEN: &str = "ubond";
+    pub const USD_TOKEN: &str = "uusd";
 
-    pub fn init() -> anyhow::Result<Staking<InjectiveTestTube>> {
-        let chain = InjectiveTestTube::new(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"));
+    pub fn feed_price(chain: InjectiveTestTube, price: Option<Decimal256>) {
+        let oracle = Oracle::new("oracle", chain.clone());
+        oracle
+            .feed_price(vec![(
+                BOND_TOKEN.to_string(),
+                price.unwrap_or(Decimal256::from_str("0.5").unwrap()),
+            )])
+            .unwrap();
+    }
 
-        // First we need to create the OHM denom
-        create_denom(chain.clone(), MAIN_TOKEN.to_string())?;
+    pub fn init() -> anyhow::Result<(Bond<InjectiveTestTube>, Rc<SigningAccount>)> {
+        let mut chain = InjectiveTestTube::new(vec![
+            coin(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"),
+            coin(10_000_000, BOND_TOKEN),
+        ]);
 
-        let contract = Staking::new("staking", chain.clone());
-        contract.upload()?;
+        let block_info = chain.block_info()?;
 
-        contract.instantiate(
-            &InstantiateMsg {
-                ohm: format!("factory/{}/{MAIN_TOKEN}", chain.sender()),
-                admin: None,
+        let treasury = chain.init_account(vec![])?;
+
+        let oracle = Oracle::new("oracle", chain.clone());
+        oracle.upload()?;
+        oracle.instantiate(
+            &oracle::msg::InstantiateMsg {
+                owner: chain.sender().to_string(),
+                base_asset: USD_TOKEN.to_string(),
             },
             None,
-            Some(&coins(AMOUNT_TO_CREATE_DENOM, "inj")),
+            None,
         )?;
 
-        Ok(contract)
+        // Register the price feed
+        oracle.register_feeder(BOND_TOKEN.to_string(), chain.sender().to_string())?;
+
+        // We set a default price of 2 bons token/ usd
+        oracle.feed_price(vec![(BOND_TOKEN.to_string(), Decimal256::from_str("0.5")?)])?;
+
+        let staking = Staking::new("staking", chain.clone());
+        staking.upload()?;
+        staking.instantiate(
+            &staking::msg::InstantiateMsg {
+                admin: None,
+                epoch_length: 100,
+                first_epoch_time: block_info.time.seconds() + 1,
+                epoch_apr: Decimal256::from_str("0.1")?,
+                initial_balances: vec![(chain.sender().to_string(), 1_000_000u128.into())],
+            },
+            None,
+            Some(&coins(AMOUNT_TO_CREATE_DENOM * 2, "inj")),
+        )?;
+
+        let bond = Bond::new("bond", chain.clone());
+        bond.upload()?;
+        bond.instantiate(
+            &bond::msg::InstantiateMsg {
+                admin: None,
+                oracle: oracle.address()?.to_string(),
+                oracle_trust_period: 600,
+                principle: BOND_TOKEN.to_string(),
+                staking: staking.address()?.to_string(),
+                usd: USD_TOKEN.to_string(),
+                treasury: treasury.address(),
+                term: Term {
+                    control_variable: Decimal256::from_str("1000")?,
+                    minimum_price: Decimal256::from_str("2")?,
+                    max_payout: Decimal256::from_str("0.2")?,
+                    max_debt: 500_000u128.into(),
+                    vesting_term: 3600u64, // 1h
+                },
+            },
+            None,
+            None,
+        )?;
+
+        staking.update_config(
+            Some(vec![bond.address()?.to_string()]),
+            None,
+            None,
+            None,
+            None,
+        )?;
+
+        Ok((bond, treasury))
     }
 
     #[test]
@@ -245,294 +333,235 @@ pub mod test {
     }
 
     #[test]
-    pub fn stake_works() -> anyhow::Result<()> {
-        let contract: Staking<InjectiveTestTube> = init()?;
-        let mut chain = contract.get_chain().clone();
-        let receiver =
-            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
+    pub fn bond_works() -> anyhow::Result<()> {
+        let (bond, treasury) = init()?;
+        let chain = bond.get_chain().clone();
 
-        // We mint some MAIN_TOKEN
-        mint_denom(chain.clone(), MAIN_TOKEN.to_string(), 100_000)?;
+        let max_price = Decimal256::from_str("2")?;
+        assert_eq!(bond.bond_price()?, Decimal256::from_str("2")?);
 
-        let sohm_denom = contract.config()?.sohm;
-        contract.stake(
-            receiver.address().to_string(),
-            &coins(
-                10_000,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
+        bond.deposit(
+            chain.sender().to_string(),
+            max_price,
+            &coins(10_000, BOND_TOKEN),
         )?;
 
-        assert_balance(chain, sohm_denom, 10_000, receiver.address().to_string())?;
+        assert_balance(
+            chain.clone(),
+            BOND_TOKEN.to_string(),
+            10_000,
+            treasury.address().to_string(),
+        )?;
+
+        // assert bond exists and has the right terms
+        let term = bond.bond_info(chain.sender().to_string())?;
+
+        assert_eq!(
+            term,
+            bond::state::Bond {
+                payout: 5_000u128.into(),
+                price_paid: Decimal256::from_str("1")?,
+                vesting_time_left: 3600,
+                last_time: chain.block_info()?.time
+            }
+        );
+
+        assert!(bond.current_debt()? > Uint128::zero());
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn not_lower_than_max_price() -> anyhow::Result<()> {
+        let (bond, _treasury) = init()?;
+        let chain = bond.get_chain().clone();
+
+        let max_price = Decimal256::from_str("1.9")?;
+        let err = bond
+            .deposit(
+                chain.sender().to_string(),
+                max_price,
+                &coins(10_000, BOND_TOKEN),
+            )
+            .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("Slippage limit: more than max price"));
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn not_higher_than_max_capacity() -> anyhow::Result<()> {
+        let (bond, _treasury) = init()?;
+        let chain = bond.get_chain().clone();
+
+        let max_price = Decimal256::from_str("2")?;
+        let err = bond
+            .deposit(
+                chain.sender().to_string(),
+                max_price,
+                &coins(400_002, BOND_TOKEN),
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("Bond too large"));
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn not_too_much_debt() -> anyhow::Result<()> {
+        let (bond, _treasury) = init()?;
+
+        bond.update_terms(Term {
+            control_variable: Decimal256::from_str("1")?,
+            minimum_price: Decimal256::from_str("2")?,
+            max_payout: Decimal256::from_str("2")?,
+            max_debt: 500_000u128.into(),
+            vesting_term: 3600u64,
+        })?;
+
+        let chain = bond.get_chain().clone();
+
+        // We deposit more than a payout of 500_000 to trigger an error (price=0.5)
+        // We can't deposit more than 400_000 at a time though
+        let max_price = Decimal256::from_str("2")?;
+        bond.deposit(
+            chain.sender().to_string(),
+            max_price,
+            &coins(1_000_002, BOND_TOKEN),
+        )?;
+        let err = bond
+            .deposit(chain.sender().to_string(), max_price, &coins(1, BOND_TOKEN))
+            .unwrap_err();
+
+        assert!(err.to_string().contains("Max capacity reached"));
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn bond_adds() -> anyhow::Result<()> {
+        let (bond, treasury) = init()?;
+        let chain = bond.get_chain().clone();
+
+        let max_price = Decimal256::from_str("5")?;
+
+        bond.deposit(
+            chain.sender().to_string(),
+            max_price,
+            &coins(10_000, BOND_TOKEN),
+        )?;
+
+        bond.deposit(
+            chain.sender().to_string(),
+            max_price,
+            &coins(10_000, BOND_TOKEN),
+        )?;
+
+        // assert bond exists and has the right terms
+        let term = bond.bond_info(chain.sender().to_string())?;
+
+        assert_balance(
+            chain.clone(),
+            BOND_TOKEN.to_string(),
+            20_000,
+            treasury.address().to_string(),
+        )?;
+
+        assert_eq!(
+            term,
+            bond::state::Bond {
+                payout: 7010u128.into(),
+                price_paid: Decimal256::from_str("2.487064676616915")?,
+                vesting_time_left: 3600,
+                last_time: chain.block_info()?.time
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn bond_adds_with_price_increase() -> anyhow::Result<()> {
+        let (bond, treasury) = init()?;
+        let chain = bond.get_chain().clone();
+
+        let max_price = Decimal256::from_str("2.5")?;
+
+        bond.deposit(
+            chain.sender().to_string(),
+            max_price,
+            &coins(10_000, BOND_TOKEN),
+        )?;
+
+        chain.wait_blocks(180)?;
+
+        assert_eq!(
+            bond.percent_vested_for(chain.sender().to_string())?,
+            Decimal256::from_str("0.5")?
+        );
+
+        feed_price(chain.clone(), None);
+        bond.deposit(
+            chain.sender().to_string(),
+            max_price,
+            &coins(10_000, BOND_TOKEN),
+        )?;
+
+        // assert bond exists and has the right terms
+        let term = bond.bond_info(chain.sender().to_string())?;
+
+        assert_balance(
+            chain.clone(),
+            BOND_TOKEN.to_string(),
+            20_000,
+            treasury.address().to_string(),
+        )?;
+
+        assert_eq!(term.payout.u128(), 9_023);
 
         Ok(())
     }
 
     #[test]
     pub fn unstake_works() -> anyhow::Result<()> {
-        let contract: Staking<InjectiveTestTube> = init()?;
-        let chain = contract.get_chain().clone();
-        let sender = chain.sender();
-        // We mint some MAIN_TOKEN
-        mint_denom(chain.clone(), MAIN_TOKEN.to_string(), 100_000)?;
+        let (bond, treasury) = init()?;
+        let mut chain = bond.get_chain().clone();
 
-        contract.stake(
-            sender.to_string(),
-            &coins(
-                10_000,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
+        let max_price = Decimal256::from_str("2")?;
+        let receiver = chain.init_account(vec![])?;
+
+        bond.deposit(
+            receiver.address().to_string(),
+            max_price,
+            &coins(10_000, BOND_TOKEN),
         )?;
 
-        let sohm_denom = contract.config()?.sohm;
+        chain.wait_blocks(180)?;
 
-        contract.unstake(sender.to_string(), &coins(10_000, sohm_denom.clone()))?;
+        bond.redeem(receiver.address().to_string(), false)?;
 
-        assert_balance(chain.clone(), sohm_denom, 0, sender.to_string())?;
+        let staking = Staking::new("staking", chain.clone());
         assert_balance(
             chain.clone(),
-            tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            100_000,
-            sender.to_string(),
-        )?;
-        Ok(())
-    }
-
-    #[test]
-    pub fn stake_with_different_exchange_rates_works() -> anyhow::Result<()> {
-        let contract: Staking<InjectiveTestTube> = init()?;
-        let mut chain = contract.get_chain().clone();
-        let receiver =
-            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
-
-        // We mint some MAIN_TOKEN
-        mint_denom(chain.clone(), MAIN_TOKEN.to_string(), 100_000)?;
-
-        let sohm_denom = contract.config()?.sohm;
-        contract.stake(
+            staking.config()?.ohm,
+            2_501,
             receiver.address().to_string(),
-            &coins(
-                10_000,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
         )?;
 
+        bond.redeem(receiver.address().to_string(), false)
+            .unwrap_err();
+
+        chain.wait_blocks(180)?;
+
+        bond.redeem(receiver.address().to_string(), false)?;
         assert_balance(
             chain.clone(),
-            sohm_denom.clone(),
-            10_000,
+            staking.config()?.ohm,
+            5_000,
             receiver.address().to_string(),
         )?;
-
-        // We send some tokens to the contract, this should double the exchange rate
-        chain.bank_send(
-            contract.address()?.to_string(),
-            coins(
-                10_000,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        contract.stake(
-            receiver.address().to_string(),
-            &coins(
-                10_000,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        assert_balance(
-            chain.clone(),
-            sohm_denom,
-            15_000,
-            receiver.address().to_string(),
-        )?;
-
-        Ok(())
-    }
-
-    #[test]
-    pub fn stake_with_weird_exchange_rates_works() -> anyhow::Result<()> {
-        let contract: Staking<InjectiveTestTube> = init()?;
-        let mut chain = contract.get_chain().clone();
-        let receiver =
-            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
-
-        // We mint some MAIN_TOKEN
-        mint_denom(chain.clone(), MAIN_TOKEN.to_string(), 100_000)?;
-
-        let sohm_denom = contract.config()?.sohm;
-        contract.stake(
-            receiver.address().to_string(),
-            &coins(
-                10_000,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        assert_balance(
-            chain.clone(),
-            sohm_denom.clone(),
-            10_000,
-            receiver.address().to_string(),
-        )?;
-
-        // We send some tokens to the contract, this should double the exchange rate
-        chain.bank_send(
-            contract.address()?.to_string(),
-            coins(
-                2_563,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        contract.stake(
-            receiver.address().to_string(),
-            &coins(
-                10_000,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        assert_balance(
-            chain.clone(),
-            sohm_denom,
-            10_000 + 10_000 * 10_000 / (10_000 + 2_563),
-            receiver.address().to_string(),
-        )?;
-
-        Ok(())
-    }
-
-    #[test_fuzz::test_fuzz]
-    pub fn fuzz_stake_and_feed(
-        first_stake: u128,
-        feed: u128,
-        second_stake: u128,
-    ) -> anyhow::Result<()> {
-        let contract: Staking<InjectiveTestTube> = init()?;
-        let mut chain = contract.get_chain().clone();
-        let receiver =
-            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
-
-        // We mint some MAIN_TOKEN
-        mint_denom(
-            chain.clone(),
-            MAIN_TOKEN.to_string(),
-            first_stake + second_stake + feed,
-        )?;
-
-        let sohm_denom = contract.config()?.sohm;
-        contract.stake(
-            receiver.address().to_string(),
-            &coins(
-                first_stake,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        assert_balance(
-            chain.clone(),
-            sohm_denom.clone(),
-            first_stake,
-            receiver.address().to_string(),
-        )?;
-
-        // We send some tokens to the contract, this should double the exchange rate
-        chain.bank_send(
-            contract.address()?.to_string(),
-            coins(
-                feed,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        contract.stake(
-            receiver.address().to_string(),
-            &coins(
-                second_stake,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        assert_balance(
-            chain.clone(),
-            sohm_denom,
-            first_stake + second_stake * first_stake / (first_stake + feed),
-            receiver.address().to_string(),
-        )?;
-
-        Ok(())
-    }
-
-    #[test_fuzz::test_fuzz]
-    fn fuzz_stake_and_feed_unstake(
-        first_stake: u128,
-        feed: u128,
-        unstake: u128,
-    ) -> anyhow::Result<()> {
-        let contract: Staking<InjectiveTestTube> = init()?;
-        let mut chain = contract.get_chain().clone();
-        let receiver =
-            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
-
-        // We mint some MAIN_TOKEN
-        mint_denom(chain.clone(), MAIN_TOKEN.to_string(), first_stake)?;
-
-        let sohm_denom = contract.config()?.sohm;
-        contract.stake(
-            receiver.address().to_string(),
-            &coins(
-                first_stake + feed,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        assert_balance(
-            chain.clone(),
-            sohm_denom.clone(),
-            first_stake,
-            receiver.address().to_string(),
-        )?;
-
-        // We send some tokens to the contract, this should double the exchange rate
-        chain.bank_send(
-            contract.address()?.to_string(),
-            coins(
-                feed,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        )?;
-
-        let unstake_response = contract.unstake(
-            receiver.address().to_string(),
-            &coins(
-                unstake,
-                tokenfactory_denom(chain.clone(), MAIN_TOKEN.to_string()),
-            ),
-        );
-
-        if unstake > first_stake {
-            if unstake_response.is_ok() {
-                bail!("Unstake is higher than stake and we have an ok response on unstake")
-            }
-            assert_balance(
-                chain.clone(),
-                sohm_denom,
-                first_stake,
-                receiver.address().to_string(),
-            )?;
-        } else {
-            if unstake_response.is_err() {
-                bail!("when unstake is lower than stake, unstaking should always be allowed ")
-            }
-            assert_balance(
-                chain.clone(),
-                sohm_denom,
-                first_stake - unstake * (first_stake + feed) / first_stake,
-                receiver.address().to_string(),
-            )?;
-        }
 
         Ok(())
     }

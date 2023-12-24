@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal256, Uint128};
 
-use crate::state::{Config, Term};
+use crate::state::{Bond, Config, Term};
 
 /// Message type for `instantiate` entry_point
 #[cw_serde]
@@ -80,4 +80,6 @@ pub enum QueryMsg {
     PercentVestedFor { recipient: String },
     #[returns(Decimal256)]
     PendingPayoutFor { recipient: String },
+    #[returns(Bond)]
+    BondInfo { recipient: String },
 }
