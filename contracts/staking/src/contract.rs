@@ -132,11 +132,13 @@ pub mod test {
         let contract = Staking::new("staking", chain.clone());
         contract.upload()?;
 
+        let block_info = chain.block_info()?;
+
         contract.instantiate(
             &InstantiateMsg {
                 admin: None,
-                epoch_apr: Decimal256::from_str("1.1")?,
-                first_epoch_time: 100_000,
+                epoch_apr: Decimal256::from_str("0.1")?,
+                first_epoch_time: block_info.time.plus_seconds(1).seconds(),
                 epoch_length: 100,
                 initial_balances: vec![(chain.sender().to_string(), 1_000_000u128.into())],
             },
@@ -279,6 +281,177 @@ pub mod test {
             10_000 + 10_000 * 10_000 / (10_000 + 2_563),
             receiver.address().to_string(),
         )?;
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn two_people_stake_works() -> anyhow::Result<()> {
+        let contract: Staking<InjectiveTestTube> = init()?;
+        let mut chain = contract.get_chain().clone();
+        let receiver =
+            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
+
+        let sohm_denom = contract.config()?.sohm;
+        let ohm_denom = contract.config()?.ohm;
+        chain.bank_send(
+            receiver.address().to_string(),
+            coins(5_000, ohm_denom.clone()),
+        )?;
+
+        contract.stake(
+            chain.sender().to_string(),
+            &coins(10_000, contract.config()?.ohm),
+        )?;
+
+        contract.call_as(&receiver).stake(
+            receiver.address().to_string(),
+            &coins(5_000, contract.config()?.ohm),
+        )?;
+
+        assert_balance(
+            chain.clone(),
+            sohm_denom.clone(),
+            5_000,
+            receiver.address().to_string(),
+        )?;
+        assert_balance(
+            chain.clone(),
+            sohm_denom.clone(),
+            10_000,
+            chain.sender().to_string(),
+        )?;
+        assert_balance(chain, ohm_denom, 0, receiver.address().to_string())?;
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn two_people_stake_withdraw_works() -> anyhow::Result<()> {
+        let contract: Staking<InjectiveTestTube> = init()?;
+        let mut chain = contract.get_chain().clone();
+        let receiver =
+            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
+
+        let sohm_denom = contract.config()?.sohm;
+        let ohm_denom = contract.config()?.ohm;
+        chain.bank_send(
+            receiver.address().to_string(),
+            coins(5_000, ohm_denom.clone()),
+        )?;
+
+        contract.stake(
+            chain.sender().to_string(),
+            &coins(10_000, contract.config()?.ohm),
+        )?;
+
+        contract.call_as(&receiver).stake(
+            receiver.address().to_string(),
+            &coins(5_000, contract.config()?.ohm),
+        )?;
+
+        assert_balance(
+            chain.clone(),
+            sohm_denom.clone(),
+            5_000,
+            receiver.address().to_string(),
+        )?;
+        assert_balance(
+            chain.clone(),
+            sohm_denom.clone(),
+            10_000,
+            chain.sender().to_string(),
+        )?;
+        assert_balance(
+            chain.clone(),
+            ohm_denom.clone(),
+            0,
+            receiver.address().to_string(),
+        )?;
+
+        contract.unstake(
+            chain.sender().to_string(),
+            &coins(10_000, sohm_denom.clone()),
+        )?;
+
+        contract.call_as(&receiver).unstake(
+            receiver.address().to_string(),
+            &coins(5_000, sohm_denom.clone()),
+        )?;
+
+        assert_balance(
+            chain.clone(),
+            sohm_denom.clone(),
+            0,
+            receiver.address().to_string(),
+        )?;
+        assert_balance(
+            chain.clone(),
+            sohm_denom.clone(),
+            0,
+            chain.sender().to_string(),
+        )?;
+        assert_balance(chain, ohm_denom, 5_000, receiver.address().to_string())?;
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn two_people_stake_rebase_withdraw_works() -> anyhow::Result<()> {
+        let contract: Staking<InjectiveTestTube> = init()?;
+        let mut chain = contract.get_chain().clone();
+        let receiver =
+            chain.init_account(coins(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"))?;
+
+        let sohm_denom = contract.config()?.sohm;
+        let ohm_denom = contract.config()?.ohm;
+        chain.bank_send(
+            receiver.address().to_string(),
+            coins(500_000, ohm_denom.clone()),
+        )?;
+
+        contract.stake(
+            chain.sender().to_string(),
+            &coins(500_000, contract.config()?.ohm),
+        )?;
+
+        contract.call_as(&receiver).stake(
+            receiver.address().to_string(),
+            &coins(500_000, contract.config()?.ohm),
+        )?;
+
+        // We advance time to make sure we can rebase
+
+        chain.wait_blocks(100)?;
+        contract.rebase()?;
+
+        contract.unstake(
+            chain.sender().to_string(),
+            &coins(500_000, sohm_denom.clone()),
+        )?;
+
+        chain.wait_blocks(100)?;
+        contract.rebase()?;
+
+        contract.call_as(&receiver).unstake(
+            receiver.address().to_string(),
+            &coins(500_000, sohm_denom.clone()),
+        )?;
+
+        assert_balance(
+            chain.clone(),
+            sohm_denom.clone(),
+            0,
+            receiver.address().to_string(),
+        )?;
+        assert_balance(chain.clone(), sohm_denom, 0, chain.sender().to_string())?;
+        assert_balance(
+            chain.clone(),
+            ohm_denom.clone(),
+            550_000,
+            chain.sender().to_string(),
+        )?;
+        assert_balance(chain, ohm_denom, 605_000, receiver.address().to_string())?;
 
         Ok(())
     }

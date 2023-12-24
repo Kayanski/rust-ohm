@@ -4768,12 +4768,14 @@ name = "tests"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bond",
  "cosmos-sdk-proto 0.19.0",
  "cosmwasm-std",
  "cw-orch",
  "cw20-base 1.2.2",
  "dotenv",
  "injective-std 0.1.4",
+ "oracle",
  "pretty_env_logger",
  "prost 0.11.9",
  "prost-types 0.11.9",
