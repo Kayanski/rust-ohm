@@ -2,6 +2,6 @@ a40bba7f4a2009be68a9af2e6c3a7c7bf689d7371e410baff518225beb2e21aa  target/wasm32-
 <<<<<<< HEAD
 =======
 >>>>>>> main
-4692d0f49f3508db98e8586b4cf13e6142f58cfe7ef0b252160a1a7120e48ebe  target/wasm32-unknown-unknown/release/oracle.wasm
-70ab62a1e76c4cae57c556face0eb430534f3ebacc2d6bf5f00a78f5d7df1665  target/wasm32-unknown-unknown/release/staking.wasm
-8305bc6fe81956a5b5770e202d976c00cb82f679eb90703bab3f53bd4a5ff993  target/wasm32-unknown-unknown/release/bond.wasm
+cb98852c3871eac2592f89f361a67b9ae12197c10eba68aee3f01afa1694d832  target/wasm32-unknown-unknown/release/oracle.wasm
+117b879aea6a8e7b31ef1aa318bca7476dc474a0c5d47f824e92b8e8319bdec2  target/wasm32-unknown-unknown/release/staking.wasm
+fd7fd6b43c44fb5d90d29ff081b52c0192a9dc3903ea2a2b509e2b93c4a50555  target/wasm32-unknown-unknown/release/bond.wasm

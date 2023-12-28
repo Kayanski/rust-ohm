@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal256, Uint128};
 
-use crate::state::{Bond, Config, Term};
+use crate::state::{Adjustment, Bond, Terms};
 
 /// Message type for `instantiate` entry_point
 #[cw_serde]
@@ -12,7 +12,7 @@ pub struct InstantiateMsg {
     pub admin: Option<String>,
     pub staking: String,
     pub oracle_trust_period: u64, // We recommend something along the lines of 10 minutes = 600)
-    pub term: Term,
+    pub terms: Terms,
     pub treasury: String,
 }
 
@@ -30,7 +30,7 @@ pub enum ExecuteMsg {
         depositor: String,
     },
     UpdateTerms {
-        terms: Term,
+        terms: Terms,
     },
     UpdateConfig {
         usd: Option<String>,
@@ -58,8 +58,12 @@ pub enum MigrateMsg {}
 #[derive(QueryResponses)]
 #[cfg_attr(feature = "interface", derive(cw_orch::QueryFns))]
 pub enum QueryMsg {
-    #[returns(Config)]
+    #[returns(ConfigResponse)]
     Config {},
+    #[returns(Terms)]
+    Terms {},
+    #[returns(Adjustment)]
+    Adjustment {},
     #[returns(Uint128)]
     MaxPayout {},
     #[returns(Uint128)]
@@ -82,4 +86,15 @@ pub enum QueryMsg {
     PendingPayoutFor { recipient: String },
     #[returns(Bond)]
     BondInfo { recipient: String },
+}
+
+#[cw_serde]
+pub struct ConfigResponse {
+    pub usd: String,
+    pub principle: String,
+    pub admin: String,
+    pub staking: String,
+    pub oracle: String,
+    pub oracle_trust_period: u64, // in Seconds
+    pub treasury: String,
 }

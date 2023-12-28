@@ -8,7 +8,7 @@ use injective_std::types::injective::tokenfactory::v1beta1::{MsgBurn, MsgMint};
 use crate::{
     helpers::{deposit_one_coin, mint_msgs},
     query::{base_denom, current_exchange_rate, staking_denom, token_balance},
-    state::{CONFIG, EPOCH_STATE, MINTER_INFO},
+    state::{CONFIG, EPOCH_STATE, BOND_CONTRACT_INFO},
     ContractError,
 };
 
@@ -115,7 +115,7 @@ pub fn mint(
     amount: Uint128,
 ) -> Result<Response, ContractError> {
     let minter_info =
-        MINTER_INFO
+        BOND_CONTRACT_INFO
             .load(deps.storage, &info.sender)
             .or(Err(StdError::generic_err(format!(
                 "{} is not authorized to mint on staking",

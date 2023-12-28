@@ -6,7 +6,7 @@ use oracle::msg::PriceResponse;
 
 use crate::{
     execute::current_debt,
-    state::{query_bond_price, Bond, Config, BOND_INFO, CONFIG, TERMS},
+    state::{query_bond_price, Adjustment, Bond, Terms, ADJUSTMENT, BOND_INFO, CONFIG, TERMS},
     ContractError,
 };
 use staking::msg::ConfigResponse;
@@ -46,8 +46,26 @@ pub fn circulating_supply(deps: Deps) -> Result<Uint128, ContractError> {
     Ok(cw20_base::contract::query_token_info(deps)?.total_supply)
 }
 
-pub fn query_config(deps: Deps) -> Result<Config, ContractError> {
-    Ok(CONFIG.load(deps.storage)?)
+pub fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    Ok(crate::msg::ConfigResponse {
+        usd: config.usd,
+        principle: config.principle,
+        admin: config.admin.to_string(),
+        staking: config.staking.to_string(),
+        oracle: config.oracle.to_string(),
+        oracle_trust_period: config.oracle_trust_period,
+        treasury: config.treasury.to_string(),
+    })
+}
+
+pub fn query_terms(deps: Deps) -> Result<Terms, ContractError> {
+    Ok(TERMS.load(deps.storage)?)
+}
+
+pub fn query_adjustment(deps: Deps) -> Result<Adjustment, ContractError> {
+    Ok(ADJUSTMENT.load(deps.storage)?)
 }
 
 pub fn asset_price(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {

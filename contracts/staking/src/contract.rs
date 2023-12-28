@@ -7,11 +7,11 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::execute::{mint, rebase, stake, unstake};
 use crate::helpers::{create_denom_msg, mint_msgs};
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{BondContractsElem, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::{base_denom, query_config, query_exchange_rate};
 use crate::state::{
-    Config, EpochState, MinterInfo, BASE_TOKEN_DENOM, CONFIG, EPOCH_STATE, MINTER_INFO,
-    STAKING_TOKEN_DENOM,
+    bond_contracts, BondContractInfo, Config, EpochState, BASE_TOKEN_DENOM, BOND_CONTRACT_INFO,
+    CONFIG, EPOCH_STATE, STAKING_TOKEN_DENOM,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -75,16 +75,16 @@ pub fn execute(
             admin,
             epoch_length,
             epoch_apr,
-            add_minter,
-            remove_minter,
+            add_bond,
+            remove_bond,
         } => update_config(
             deps,
             info,
             admin,
             epoch_length,
             epoch_apr,
-            add_minter,
-            remove_minter,
+            add_bond,
+            remove_bond,
         ),
     }
 }
@@ -95,6 +95,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
     match msg {
         QueryMsg::Config {} => Ok(to_json_binary(&query_config(deps, env)?)?),
         QueryMsg::ExchangeRate {} => Ok(to_json_binary(&query_exchange_rate(deps, env)?)?),
+        QueryMsg::Bonds {} => Ok(to_json_binary(&bond_contracts(deps)?)?),
+        QueryMsg::EpochState {} => Ok(to_json_binary(&EPOCH_STATE.load(deps.storage)?)?),
     }
 }
 
@@ -104,8 +106,8 @@ pub fn update_config(
     admin: Option<String>,
     epoch_length: Option<u64>,
     epoch_apr: Option<Decimal256>,
-    add_minter: Option<Vec<String>>,
-    remove_minter: Option<Vec<String>>,
+    add_bond: Option<Vec<BondContractsElem>>,
+    remove_bond: Option<Vec<String>>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
@@ -120,22 +122,21 @@ pub fn update_config(
     if let Some(epoch_apr) = epoch_apr {
         config.epoch_apr = epoch_apr;
     }
-    if let Some(add_minter) = add_minter {
-        for minter in add_minter {
-            MINTER_INFO.save(
+    if let Some(add_bond) = add_bond {
+        for bond in add_bond {
+            BOND_CONTRACT_INFO.save(
                 deps.storage,
-                &deps.api.addr_validate(&minter)?,
-                &MinterInfo { can_mint: true },
+                &deps.api.addr_validate(&bond.bond_address)?,
+                &BondContractInfo {
+                    can_mint: true,
+                    bond_token: bond.bond_token,
+                },
             )?;
         }
     }
-    if let Some(remove_minter) = remove_minter {
-        for minter in remove_minter {
-            MINTER_INFO.save(
-                deps.storage,
-                &deps.api.addr_validate(&minter)?,
-                &MinterInfo { can_mint: false },
-            )?;
+    if let Some(remove_bond) = remove_bond {
+        for bond in remove_bond {
+            BOND_CONTRACT_INFO.remove(deps.storage, &deps.api.addr_validate(&bond)?);
         }
     }
     CONFIG.save(deps.storage, &config)?;

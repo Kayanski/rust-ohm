@@ -1,6 +1,8 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal256, Uint128};
 
+use crate::state::EpochState;
+
 /// Message type for `instantiate` entry_point
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -32,8 +34,8 @@ pub enum ExecuteMsg {
         admin: Option<String>,
         epoch_length: Option<u64>,
         epoch_apr: Option<Decimal256>,
-        add_minter: Option<Vec<String>>,
-        remove_minter: Option<Vec<String>>,
+        add_bond: Option<Vec<BondContractsElem>>,
+        remove_bond: Option<Vec<String>>,
     },
 }
 
@@ -50,6 +52,10 @@ pub enum QueryMsg {
     Config {},
     #[returns(Decimal256)]
     ExchangeRate {},
+    #[returns(BondContractsResponse)]
+    Bonds {},
+    #[returns(EpochState)]
+    EpochState {},
 }
 
 #[cw_serde]
@@ -59,4 +65,15 @@ pub struct ConfigResponse {
     pub admin: String,
     pub ohm: String,
     pub sohm: String,
+}
+
+#[cw_serde]
+pub struct BondContractsResponse {
+    pub bonds: Vec<BondContractsElem>,
+}
+
+#[cw_serde]
+pub struct BondContractsElem {
+    pub bond_token: String,
+    pub bond_address: String,
 }

@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub const CONFIG: Item<Config> = Item::new("config");
-pub const TERMS: Item<Term> = Item::new("terms");
+pub const TERMS: Item<Terms> = Item::new("terms");
 
 pub const TOTAL_DEBT: Item<Uint128> = Item::new("total_debt");
 pub const LAST_DECAY: Item<Timestamp> = Item::new("last_decay");
@@ -42,7 +42,7 @@ pub struct Market {
 }
 
 #[cw_serde]
-pub struct Term {
+pub struct Terms {
     pub control_variable: Decimal256,
     pub minimum_price: Decimal256,
     pub max_payout: Decimal256,

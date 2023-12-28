@@ -11,7 +11,7 @@ keywords.workspace = true
 [dependencies]
 anyhow = "1.0.75"
 cosmwasm-std.workspace = true
-cw-orch = { workspace = true, features = ["eth"] }
+cw-orch = { workspace = true, features = ["eth", "injective-test-tube"] }
 cw20-base = { workspace = true }
 injective-std.workspace = true
 prost = { workspace = true }
@@ -22,3 +22,4 @@ oracle = { workspace = true, features = ["interface"] }
 bond = { workspace = true, features = ["interface"] }
 dotenv = "0.15.0"
 pretty_env_logger = "0.5.0"
+cosmwasm-schema.workspace = true

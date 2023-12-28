@@ -9,10 +9,10 @@ use crate::execute::{current_debt, debt_decay, deposit, redeem};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::{
     asset_price, bond_info, debt_ratio, max_payout, payout_for, pending_payout_for,
-    percent_vested_for, query_config, standardized_debt_ratio,
+    percent_vested_for, query_adjustment, query_config, query_terms, standardized_debt_ratio,
 };
 use crate::state::{
-    query_bond_price, Adjustment, Config, Term, ADJUSTMENT, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT,
+    query_bond_price, Adjustment, Config, Terms, ADJUSTMENT, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT,
 };
 /// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -37,7 +37,7 @@ pub fn instantiate(
     };
 
     CONFIG.save(deps.storage, &config)?;
-    TERMS.save(deps.storage, &msg.term)?;
+    TERMS.save(deps.storage, &msg.terms)?;
     LAST_DECAY.save(deps.storage, &env.block.time)?;
     TOTAL_DEBT.save(deps.storage, &Uint128::zero())?;
     ADJUSTMENT.save(
@@ -102,6 +102,8 @@ pub fn execute(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> QueryResult {
     match msg {
         QueryMsg::Config {} => Ok(to_json_binary(&query_config(deps)?)?),
+        QueryMsg::Terms {} => Ok(to_json_binary(&query_terms(deps)?)?),
+        QueryMsg::Adjustment {} => Ok(to_json_binary(&query_adjustment(deps)?)?),
         QueryMsg::MaxPayout {} => Ok(to_json_binary(&max_payout(deps)?)?),
         QueryMsg::PayoutFor { value } => Ok(to_json_binary(&payout_for(deps, env, value)?)?),
         QueryMsg::BondPrice {} => Ok(to_json_binary(&query_bond_price(deps, env)?)?),
@@ -124,7 +126,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> QueryResult {
     }
 }
 
-pub fn update_terms(deps: DepsMut, info: MessageInfo, terms: Term) -> ContractResult {
+pub fn update_terms(deps: DepsMut, info: MessageInfo, terms: Terms) -> ContractResult {
     if info.sender != CONFIG.load(deps.storage)?.admin {
         return Err(ContractError::Unauthorized {});
     }
@@ -226,23 +228,23 @@ pub mod test {
     use bond::msg::ExecuteMsgFns as _;
     use bond::msg::QueryMsgFns;
     use cw_orch::injective_test_tube::injective_test_tube::Account;
-    use oracle::interface::Oracle;
     use oracle::msg::ExecuteMsgFns as _;
-    use staking::interface::Staking;
-    use staking::msg::ExecuteMsgFns as _;
     use staking::msg::QueryMsgFns as _;
+    use tests::deploy::upload::BondConfig;
+    use tests::deploy::upload::Shogun;
+    use tests::deploy::upload::ShogunDeployment;
     use tests::tokenfactory::assert_balance;
 
-    use bond::state::Term;
+    use bond::state::Terms;
 
     pub const AMOUNT_TO_CREATE_DENOM: u128 = 10_000_000_000_000_000_000u128;
     pub const FUNDS_MULTIPLIER: u128 = 100_000;
     pub const BOND_TOKEN: &str = "ubond";
     pub const USD_TOKEN: &str = "uusd";
 
-    pub fn feed_price(chain: InjectiveTestTube, price: Option<Decimal256>) {
-        let oracle = Oracle::new("oracle", chain.clone());
-        oracle
+    pub fn feed_price<Chain: CwEnv>(shogun: &Shogun<Chain>, price: Option<Decimal256>) {
+        shogun
+            .oracle
             .feed_price(vec![(
                 BOND_TOKEN.to_string(),
                 price.unwrap_or(Decimal256::from_str("0.5").unwrap()),
@@ -250,7 +252,11 @@ pub mod test {
             .unwrap();
     }
 
-    pub fn init() -> anyhow::Result<(Bond<InjectiveTestTube>, Rc<SigningAccount>)> {
+    pub fn init() -> anyhow::Result<(
+        Shogun<InjectiveTestTube>,
+        Bond<InjectiveTestTube>,
+        Rc<SigningAccount>,
+    )> {
         let mut chain = InjectiveTestTube::new(vec![
             coin(AMOUNT_TO_CREATE_DENOM * FUNDS_MULTIPLIER, "inj"),
             coin(10_000_000, BOND_TOKEN),
@@ -260,49 +266,26 @@ pub mod test {
 
         let treasury = chain.init_account(vec![])?;
 
-        let oracle = Oracle::new("oracle", chain.clone());
-        oracle.upload()?;
-        oracle.instantiate(
-            &oracle::msg::InstantiateMsg {
-                owner: chain.sender().to_string(),
+        let mut shogun = Shogun::deploy_on(
+            chain.clone(),
+            ShogunDeployment {
                 base_asset: USD_TOKEN.to_string(),
-            },
-            None,
-            None,
-        )?;
-
-        // Register the price feed
-        oracle.register_feeder(BOND_TOKEN.to_string(), chain.sender().to_string())?;
-
-        // We set a default price of 2 bons token/ usd
-        oracle.feed_price(vec![(BOND_TOKEN.to_string(), Decimal256::from_str("0.5")?)])?;
-
-        let staking = Staking::new("staking", chain.clone());
-        staking.upload()?;
-        staking.instantiate(
-            &staking::msg::InstantiateMsg {
-                admin: None,
                 epoch_length: 100,
                 first_epoch_time: block_info.time.seconds() + 1,
                 epoch_apr: Decimal256::from_str("0.1")?,
-                initial_balances: vec![(chain.sender().to_string(), 1_000_000u128.into())],
+                initial_balances: vec![(chain.sender().to_string(), 1_000_000u128)],
+                amount_to_create_denom: AMOUNT_TO_CREATE_DENOM,
+                fee_token: "inj".to_string(),
             },
-            None,
-            Some(&coins(AMOUNT_TO_CREATE_DENOM * 2, "inj")),
         )?;
 
-        let bond = Bond::new("bond", chain.clone());
-        bond.upload()?;
-        bond.instantiate(
-            &bond::msg::InstantiateMsg {
-                admin: None,
-                oracle: oracle.address()?.to_string(),
-                oracle_trust_period: 600,
-                principle: BOND_TOKEN.to_string(),
-                staking: staking.address()?.to_string(),
-                usd: USD_TOKEN.to_string(),
+        shogun.add_bond(
+            chain,
+            BondConfig {
+                bond_token_denom: BOND_TOKEN.to_string(),
                 treasury: treasury.address(),
-                term: Term {
+                oracle_trust_period: 600,
+                terms: Terms {
                     control_variable: Decimal256::from_str("1000")?,
                     minimum_price: Decimal256::from_str("2")?,
                     max_payout: Decimal256::from_str("0.2")?,
@@ -310,19 +293,17 @@ pub mod test {
                     vesting_term: 3600u64, // 1h
                 },
             },
-            None,
-            None,
         )?;
+        // We set a default price of 2 bond token/ usd
+        shogun
+            .oracle
+            .feed_price(vec![(BOND_TOKEN.to_string(), Decimal256::from_str("0.5")?)])?;
 
-        staking.update_config(
-            Some(vec![bond.address()?.to_string()]),
-            None,
-            None,
-            None,
-            None,
-        )?;
-
-        Ok((bond, treasury))
+        Ok((
+            shogun.clone(),
+            shogun.bonds.get(BOND_TOKEN).unwrap().clone(),
+            treasury,
+        ))
     }
 
     #[test]
@@ -334,7 +315,7 @@ pub mod test {
 
     #[test]
     pub fn bond_works() -> anyhow::Result<()> {
-        let (bond, treasury) = init()?;
+        let (_, bond, treasury) = init()?;
         let chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("2")?;
@@ -373,7 +354,7 @@ pub mod test {
 
     #[test]
     pub fn not_lower_than_max_price() -> anyhow::Result<()> {
-        let (bond, _treasury) = init()?;
+        let (_, bond, _treasury) = init()?;
         let chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("1.9")?;
@@ -393,7 +374,7 @@ pub mod test {
 
     #[test]
     pub fn not_higher_than_max_capacity() -> anyhow::Result<()> {
-        let (bond, _treasury) = init()?;
+        let (_, bond, _treasury) = init()?;
         let chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("2")?;
@@ -411,9 +392,9 @@ pub mod test {
 
     #[test]
     pub fn not_too_much_debt() -> anyhow::Result<()> {
-        let (bond, _treasury) = init()?;
+        let (_, bond, _treasury) = init()?;
 
-        bond.update_terms(Term {
+        bond.update_terms(Terms {
             control_variable: Decimal256::from_str("1")?,
             minimum_price: Decimal256::from_str("2")?,
             max_payout: Decimal256::from_str("2")?,
@@ -442,7 +423,7 @@ pub mod test {
 
     #[test]
     pub fn bond_adds() -> anyhow::Result<()> {
-        let (bond, treasury) = init()?;
+        let (_, bond, treasury) = init()?;
         let chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("5")?;
@@ -484,7 +465,7 @@ pub mod test {
 
     #[test]
     pub fn bond_adds_with_price_increase() -> anyhow::Result<()> {
-        let (bond, treasury) = init()?;
+        let (shogun, bond, treasury) = init()?;
         let chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("2.5")?;
@@ -502,7 +483,7 @@ pub mod test {
             Decimal256::from_str("0.5")?
         );
 
-        feed_price(chain.clone(), None);
+        feed_price(&shogun, None);
         bond.deposit(
             chain.sender().to_string(),
             max_price,
@@ -526,7 +507,7 @@ pub mod test {
 
     #[test]
     pub fn unstake_works() -> anyhow::Result<()> {
-        let (bond, treasury) = init()?;
+        let (shogun, bond, _treasury) = init()?;
         let mut chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("2")?;
@@ -542,10 +523,9 @@ pub mod test {
 
         bond.redeem(receiver.address().to_string(), false)?;
 
-        let staking = Staking::new("staking", chain.clone());
         assert_balance(
             chain.clone(),
-            staking.config()?.ohm,
+            shogun.staking.config()?.ohm,
             2_501,
             receiver.address().to_string(),
         )?;
@@ -558,7 +538,7 @@ pub mod test {
         bond.redeem(receiver.address().to_string(), false)?;
         assert_balance(
             chain.clone(),
-            staking.config()?.ohm,
+            shogun.staking.config()?.ohm,
             5_000,
             receiver.address().to_string(),
         )?;

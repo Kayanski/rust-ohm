@@ -1,3 +1,4 @@
+use cosmwasm_schema::QueryResponses;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -31,15 +32,16 @@ pub enum ExecuteMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "interface", derive(cw_orch::QueryFns))]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
+    #[returns(ConfigResponse)]
     Config {},
-    Feeder {
-        asset: String,
-    },
-    Price {
-        base: String,
-        quote: String,
-    },
+    #[returns(FeederResponse)]
+    Feeder { asset: String },
+    #[returns(PriceResponse)]
+    Price { base: String, quote: String },
+    #[returns(PricesResponse)]
     Prices {
         start_after: Option<String>,
         limit: Option<u32>,
