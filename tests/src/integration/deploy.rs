@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use crate::deploy::upload::BondConfig;
 use crate::integration::test_constants::*;
+use crate::tokenfactory::assert_cw20_balance;
 use crate::{
     deploy::upload::{Shogun, ShogunDeployment},
     test_tube,
@@ -14,15 +15,15 @@ use bond::msg::ExecuteMsgFns as _;
 use bond::msg::QueryMsgFns as _;
 use bond::state::Adjustment;
 use bond::state::Terms;
-use cosmwasm_std::{Decimal256, Timestamp};
+use cosmwasm_std::{coins, Decimal256, Timestamp};
 use cw_orch::injective_test_tube::injective_test_tube::{Account, SigningAccount};
 use cw_orch::injective_test_tube::InjectiveTestTube;
 use cw_orch::{
     contract::interface_traits::ContractInstance, deploy::Deploy, environment::TxHandler,
 };
-use staking::msg::BondContractsElem;
-use staking::msg::ExecuteMsgFns as _;
-use staking::msg::QueryMsgFns as _;
+use staking_contract::msg::BondContractsElem;
+use staking_contract::msg::ExecuteMsgFns as _;
+use staking_contract::msg::QueryMsgFns as _;
 
 pub fn init() -> anyhow::Result<Shogun<InjectiveTestTube>> {
     let chain = test_tube();
@@ -37,6 +38,8 @@ pub fn init() -> anyhow::Result<Shogun<InjectiveTestTube>> {
             initial_balances: vec![(chain.sender().to_string(), INITIAL_SHOGUN_BALANCE)],
             amount_to_create_denom: AMOUNT_TO_CREATE_DENOM_TEST,
             fee_token: "inj".to_string(),
+            staking_symbol: "sSHGN".to_string(),
+            staking_name: "sSHOGUN".to_string(),
         },
     )?;
 
@@ -89,12 +92,12 @@ fn deploy_check() -> anyhow::Result<()> {
     // We verify all variables are set correctly
     assert_eq!(
         config,
-        staking::msg::ConfigResponse {
+        staking_contract::msg::ConfigResponse {
             admin: chain.sender().to_string(),
             epoch_apr: Decimal256::from_str(EPOCH_APR)?,
             epoch_length: EPOCH_LENGTH,
-            ohm: shogun.staking.config()?.ohm,
-            sohm: shogun.staking.config()?.sohm,
+            ohm_denom: shogun.staking.config()?.ohm_denom,
+            sohm_address: shogun.staking.config()?.sohm_address,
         }
     );
 
@@ -102,7 +105,7 @@ fn deploy_check() -> anyhow::Result<()> {
 
     assert_eq!(
         epoch_state,
-        staking::state::EpochState {
+        staking_contract::state::EpochState {
             epoch_end: Timestamp::from_seconds(FIRST_EPOCH_TIME),
             epoch_number: 0
         }
@@ -110,11 +113,16 @@ fn deploy_check() -> anyhow::Result<()> {
 
     assert_balance(
         chain.clone(),
-        config.ohm,
+        config.ohm_denom,
         INITIAL_SHOGUN_BALANCE,
         chain.sender().to_string(),
     )?;
-    assert_balance(chain.clone(), config.sohm, 0, chain.sender().to_string())?;
+    assert_cw20_balance(
+        chain.clone(),
+        config.sohm_address,
+        0,
+        chain.sender().to_string(),
+    )?;
 
     Ok(())
 }
@@ -186,12 +194,12 @@ fn modify_staking_config() -> anyhow::Result<()> {
 
     assert_eq!(
         shogun.staking.config()?,
-        staking::msg::ConfigResponse {
+        staking_contract::msg::ConfigResponse {
             admin: new_admin.address().to_string(),
             epoch_apr: new_apr,
             epoch_length: new_epoch_length,
-            ohm: shogun.staking.config()?.ohm,
-            sohm: shogun.staking.config()?.sohm,
+            ohm_denom: shogun.staking.config()?.ohm_denom,
+            sohm_address: shogun.staking.config()?.sohm_address,
         }
     );
 
@@ -297,3 +305,35 @@ fn modify_bond_terms() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn full_operations() -> anyhow::Result<()> {
+    let (shogun, bond_contract, _treasury) = init_bond()?;
+
+    let mut chain = shogun.staking.get_chain().clone();
+    let recipient = chain.init_account(vec![])?;
+    // Stake users
+    shogun.staking.stake(
+        chain.sender().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+    shogun.staking.stake(
+        recipient.address().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+
+    // use a bond
+    bond_contract.deposit(
+        recipient.address().to_string(),
+        Decimal256::from_str("2.2")?,
+        &coins(10_000, bond_terms_1::BOND_TOKEN),
+    )?;
+
+    // check that price can evolve and bond react
+
+    Ok(())
+}
+
+// check that exchange rate goes up
+// See if one can just hop on the last moment before the rebase (or equivalent)
+// Check the diamond hand system (did we include it in the end ?)

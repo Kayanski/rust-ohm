@@ -8,6 +8,7 @@ use injective_std::types::injective::tokenfactory::v1beta1::MsgCreateDenomRespon
 use injective_std::types::injective::tokenfactory::v1beta1::MsgMint;
 use injective_std::types::injective::tokenfactory::v1beta1::MsgMintResponse;
 use prost_types::Any;
+use staking_token::interface::StakingToken;
 pub fn create_denom<Chain: CwEnv + Stargate>(
     chain: Chain,
     denom: String,
@@ -80,6 +81,29 @@ where
 
     if balance.amount.u128() != amount {
         bail!("Wrong balance, Expected {}, got {}", amount, balance.amount);
+    }
+
+    Ok(())
+}
+
+use cw20_base::msg::QueryMsgFns as _;
+pub fn assert_cw20_balance<Chain: CwEnv>(
+    chain: Chain,
+    token_address: String,
+    amount: u128,
+    address: String,
+) -> anyhow::Result<()>
+where
+    <Chain as TxHandler>::Error: Sync + Send + std::error::Error + 'static,
+{
+    let token = StakingToken::new("token_address", chain.clone());
+    token.set_address(&Addr::unchecked(token_address));
+
+    let current_balance = token.balance(address)?;
+    let balance = current_balance.balance.u128();
+
+    if balance != amount {
+        bail!("Wrong balance, Expected {}, got {}", amount, balance);
     }
 
     Ok(())

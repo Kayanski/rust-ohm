@@ -23,8 +23,8 @@ pub fn main() -> anyhow::Result<()> {
 
     let block_info = chain.block_info()?;
 
-    let shogun = Shogun::new(chain.clone());
-    // let shogun = Shogun::store_on(chain.clone());
+    // let shogun = Shogun::new(chain.clone());
+    let shogun = Shogun::store_on(chain.clone())?;
     shogun.instantiate(ShogunDeployment {
         base_asset: "uusd".to_string(),
         epoch_length: 100,
@@ -33,6 +33,8 @@ pub fn main() -> anyhow::Result<()> {
         initial_balances: vec![(chain.sender().to_string(), 1_000_000u128)],
         amount_to_create_denom: 1_000_000_000_000_000_000, // 1 INJ on testnet, 10 INJ on Mainnet
         fee_token: "inj".to_string(),
+        staking_symbol: "sSHGN".to_string(),
+        staking_name: "sSHOGUN".to_string(),
     })?;
 
     Ok(())

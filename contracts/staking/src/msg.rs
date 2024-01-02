@@ -17,6 +17,11 @@ pub struct InstantiateMsg {
 #[cw_serde]
 #[cfg_attr(feature = "interface", derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
+    InstantiateStakingToken {
+        staking_token_code_id: u64,
+        staking_symbol: String,
+        staking_name: String,
+    },
     #[cfg_attr(feature = "interface", payable)]
     Stake {
         to: String,
@@ -24,6 +29,7 @@ pub enum ExecuteMsg {
     #[cfg_attr(feature = "interface", payable)]
     Unstake {
         to: String,
+        amount: Uint128,
     },
     Rebase {},
     Mint {
@@ -63,8 +69,8 @@ pub struct ConfigResponse {
     pub epoch_length: u64,
     pub epoch_apr: Decimal256,
     pub admin: String,
-    pub ohm: String,
-    pub sohm: String,
+    pub ohm_denom: String,
+    pub sohm_address: String,
 }
 
 #[cw_serde]

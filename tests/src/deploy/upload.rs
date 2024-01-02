@@ -3,19 +3,21 @@ use std::{collections::HashMap, path::PathBuf};
 use bond::interface::Bond;
 use bond::state::Terms;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{coins, Decimal256};
+use cosmwasm_std::{coins, Addr, Decimal256};
 use cw_orch::{
     contract::interface_traits::{ContractInstance, CwOrchInstantiate, CwOrchUpload},
     deploy::Deploy,
     environment::CwEnv,
     prelude::CwOrchError,
+    state::StateInterface,
 };
 use oracle::msg::QueryMsgFns as _;
 use oracle::{interface::Oracle, msg::ExecuteMsgFns as _};
-use staking::interface::Staking;
-use staking::msg::BondContractsElem;
-use staking::msg::ExecuteMsgFns as _;
-use staking::msg::QueryMsgFns as _;
+use staking_contract::interface::Staking;
+use staking_contract::msg::BondContractsElem;
+use staking_contract::msg::ExecuteMsgFns as _;
+use staking_contract::msg::QueryMsgFns as _;
+use staking_token::interface::StakingToken;
 
 pub const BOND_CODE_ID: &str = "bond-code-id";
 
@@ -24,6 +26,7 @@ pub struct Shogun<Chain: CwEnv> {
     pub staking: Staking<Chain>,
     pub bonds: HashMap<String, Bond<Chain>>,
     pub oracle: Oracle<Chain>,
+    pub staking_token: StakingToken<Chain>,
 }
 impl<Chain: CwEnv> Deploy<Chain> for Shogun<Chain> {
     type Error = CwOrchError;
@@ -36,6 +39,7 @@ impl<Chain: CwEnv> Deploy<Chain> for Shogun<Chain> {
         shogun.staking.upload()?;
         shogun.bonds.get(BOND_CODE_ID).unwrap().upload()?;
         shogun.oracle.upload()?;
+        shogun.staking_token.upload()?;
 
         Ok(shogun)
     }
@@ -105,11 +109,13 @@ impl<Chain: CwEnv> Shogun<Chain> {
         let staking = Staking::new("shogun:staking", chain.clone());
         let bond = Bond::new("shogun:bond", chain.clone());
         let oracle = Oracle::new("shogun:oracle", chain.clone());
+        let staking_token = StakingToken::new("shogun:staking-token", chain.clone());
 
         Self {
             staking,
             bonds: HashMap::from_iter([(BOND_CODE_ID.to_string(), bond)]),
             oracle,
+            staking_token,
         }
     }
 
@@ -128,8 +134,8 @@ impl<Chain: CwEnv> Shogun<Chain> {
             None,
         )?;
 
-        self.staking.instantiate(
-            &staking::msg::InstantiateMsg {
+        let instantiate_response = self.staking.instantiate(
+            &staking_contract::msg::InstantiateMsg {
                 admin: Some(sender),
                 epoch_length: deploy_data.epoch_length,
                 first_epoch_time: deploy_data.first_epoch_time,
@@ -147,6 +153,18 @@ impl<Chain: CwEnv> Shogun<Chain> {
             )),
         )?;
 
+        self.staking.instantiate_staking_token(
+            deploy_data.staking_symbol,
+            deploy_data.staking_name,
+            self.staking_token.code_id()?,
+        )?;
+
+        println!("{:?}", instantiate_response);
+
+        let config = self.staking.config()?;
+        self.staking_token
+            .set_address(&Addr::unchecked(config.sohm_address));
+        println!("{:?}", self.staking.get_chain().state().get_all_addresses());
         Ok(())
     }
 
@@ -214,6 +232,8 @@ pub struct ShogunDeployment {
     pub initial_balances: Vec<(String, u128)>,
     pub amount_to_create_denom: u128,
     pub fee_token: String,
+    pub staking_symbol: String,
+    pub staking_name: String,
 }
 
 #[cw_serde]

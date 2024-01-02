@@ -229,7 +229,7 @@ pub mod test {
     use bond::msg::QueryMsgFns;
     use cw_orch::injective_test_tube::injective_test_tube::Account;
     use oracle::msg::ExecuteMsgFns as _;
-    use staking::msg::QueryMsgFns as _;
+    use staking_contract::msg::QueryMsgFns as _;
     use tests::deploy::upload::BondConfig;
     use tests::deploy::upload::Shogun;
     use tests::deploy::upload::ShogunDeployment;
@@ -276,6 +276,8 @@ pub mod test {
                 initial_balances: vec![(chain.sender().to_string(), 1_000_000u128)],
                 amount_to_create_denom: AMOUNT_TO_CREATE_DENOM,
                 fee_token: "inj".to_string(),
+                staking_symbol: "sSHGN".to_string(),
+                staking_name: "sSHOGUN".to_string(),
             },
         )?;
 
@@ -525,7 +527,7 @@ pub mod test {
 
         assert_balance(
             chain.clone(),
-            shogun.staking.config()?.ohm,
+            shogun.staking.config()?.ohm_denom,
             2_501,
             receiver.address().to_string(),
         )?;
@@ -538,7 +540,7 @@ pub mod test {
         bond.redeem(receiver.address().to_string(), false)?;
         assert_balance(
             chain.clone(),
-            shogun.staking.config()?.ohm,
+            shogun.staking.config()?.ohm_denom,
             5_000,
             receiver.address().to_string(),
         )?;

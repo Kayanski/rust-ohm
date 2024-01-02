@@ -25,4 +25,6 @@ pub enum ContractError {
     ConversionOverflowError(#[from] cosmwasm_std::ConversionOverflowError),
     // Add any other custom errors you like here.
     // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
+    #[error("Invalid reply id on rply endpoint")]
+    InvalidReplyId {},
 }

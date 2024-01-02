@@ -8,3 +8,4 @@ pub use crate::error::ContractError;
 pub mod helpers;
 #[cfg(feature = "interface")]
 pub mod interface;
+pub mod response;

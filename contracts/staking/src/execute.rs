@@ -1,14 +1,16 @@
 use cosmos_sdk_proto::traits::Message;
 use cosmwasm_std::{
-    BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response, StdError, Uint128,
-    Uint256,
+    to_json_binary, BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response,
+    StdError, SubMsg, Uint128, Uint256,
 };
-use injective_std::types::injective::tokenfactory::v1beta1::{MsgBurn, MsgMint};
+use cw20::MinterResponse;
+use injective_std::types::injective::tokenfactory::v1beta1::MsgMint;
 
 use crate::{
+    contract::INSTANTIATE_CONTRACT_REPLY,
     helpers::{deposit_one_coin, mint_msgs},
-    query::{base_denom, current_exchange_rate, staking_denom, token_balance},
-    state::{CONFIG, EPOCH_STATE, BOND_CONTRACT_INFO},
+    query::{base_denom, current_exchange_rate, staking_token_addr, token_balance},
+    state::{BOND_CONTRACT_INFO, CONFIG, EPOCH_STATE},
     ContractError,
 };
 
@@ -64,9 +66,16 @@ pub fn stake(
         (Decimal256::from_ratio(deposited_amount, 1u128) / exchange_rate) * Uint256::one();
 
     // We mint some sOHM to the to address
-    let mint_msgs = mint_msgs(&env, staking_denom(&env), to, mint_amount.try_into()?);
+    let mint_msg = CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+        contract_addr: staking_token_addr(deps.as_ref())?.to_string(),
+        msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Mint {
+            recipient: to,
+            amount: mint_amount.try_into()?,
+        })?,
+        funds: vec![],
+    });
 
-    Ok(Response::new().add_messages(mint_msgs))
+    Ok(Response::new().add_message(mint_msg))
 }
 
 pub fn unstake(
@@ -74,26 +83,21 @@ pub fn unstake(
     env: Env,
     info: MessageInfo,
     to: String,
+    amount: Uint128,
 ) -> Result<Response, ContractError> {
-    let deposited_amount = deposit_one_coin(info, staking_denom(&env))?;
-
     let exchange_rate = current_exchange_rate(deps.as_ref(), &env, None)?;
 
-    let redeem_amount = Uint256::from(deposited_amount) * exchange_rate;
+    let redeem_amount = Uint256::from(amount) * exchange_rate;
 
     // We burn the received sOHM from this contract
-    let burn_msg = CosmosMsg::Stargate {
-        type_url: MsgBurn::TYPE_URL.to_string(),
-        value: MsgBurn {
-            sender: env.contract.address.to_string(),
-            amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
-                denom: staking_denom(&env),
-                amount: deposited_amount.to_string(),
-            }),
-        }
-        .encode_to_vec()
-        .into(),
-    };
+    let burn_msg = CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+        contract_addr: staking_token_addr(deps.as_ref())?.to_string(),
+        msg: to_json_binary(&cw20_base::msg::ExecuteMsg::BurnFrom {
+            owner: info.sender.to_string(),
+            amount,
+        })?,
+        funds: vec![],
+    });
 
     // We send OHM back to the depositor
     let send_msg = CosmosMsg::Bank(BankMsg::Send {
@@ -126,4 +130,45 @@ pub fn mint(
     }
 
     Ok(Response::new().add_messages(mint_msgs(&env, base_denom(&env), to, amount)))
+}
+
+pub fn instantiate_staking_token(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    staking_token_code_id: u64,
+    staking_symbol: String,
+    staking_name: String,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    if config.staking_denom_address.is_some() {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let staked_currency_msg = SubMsg::reply_on_success(
+        CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Instantiate {
+            admin: Some(env.contract.address.to_string()),
+            code_id: staking_token_code_id,
+            msg: to_json_binary(&cw20_base::msg::InstantiateMsg {
+                name: staking_name,
+                symbol: staking_symbol,
+                decimals: 6,
+                initial_balances: vec![],
+                mint: Some(MinterResponse {
+                    minter: env.contract.address.to_string(),
+                    cap: None,
+                }),
+                marketing: None,
+            })?,
+            funds: vec![],
+            label: "Staking token".to_string(),
+        }),
+        INSTANTIATE_CONTRACT_REPLY,
+    );
+
+    Ok(Response::new().add_submessage(staked_currency_msg))
 }

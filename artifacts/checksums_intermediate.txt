@@ -2,6 +2,8 @@ a40bba7f4a2009be68a9af2e6c3a7c7bf689d7371e410baff518225beb2e21aa  target/wasm32-
 <<<<<<< HEAD
 =======
 >>>>>>> main
-cb98852c3871eac2592f89f361a67b9ae12197c10eba68aee3f01afa1694d832  target/wasm32-unknown-unknown/release/oracle.wasm
-117b879aea6a8e7b31ef1aa318bca7476dc474a0c5d47f824e92b8e8319bdec2  target/wasm32-unknown-unknown/release/staking.wasm
-fd7fd6b43c44fb5d90d29ff081b52c0192a9dc3903ea2a2b509e2b93c4a50555  target/wasm32-unknown-unknown/release/bond.wasm
+7a19ddf8c0e1e4cddf856e215e69ee28c3a8f1d29f8fc469c059174f07bbd394  target/wasm32-unknown-unknown/release/oracle.wasm
+4c7c84e82e99769f7894142f27af740f93d23586be046f90295d99cbe5b6ce63  target/wasm32-unknown-unknown/release/staking.wasm
+74cc6a8ae4b00091adf4a2678bc66554e09e25f5d4dc79c8934249f850e669ac  target/wasm32-unknown-unknown/release/staking_token.wasm
+0693e5640329f40f1c54bf49b6c4a1a23b89f6ceaea53c556369cc9562f926f5  target/wasm32-unknown-unknown/release/bond.wasm
+17d5419c3caf74d55b970ea8e51a75a4c09df108c8dc507d8e1fe55f69a6d4fc  target/wasm32-unknown-unknown/release/staking_contract.wasm

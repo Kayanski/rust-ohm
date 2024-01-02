@@ -2,7 +2,7 @@ use cosmwasm_std::{
     ensure, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Decimal256, Deps, DepsMut, Env,
     MessageInfo, Response, StdError, Uint128, Uint256,
 };
-use staking::msg::ConfigResponse;
+use staking_contract::msg::ConfigResponse;
 
 use crate::{
     helpers::{adjust, deposit_one_coin},
@@ -90,7 +90,7 @@ pub fn deposit(
 
     let mint_msg = CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
         contract_addr: config.staking.to_string(),
-        msg: to_json_binary(&staking::msg::ExecuteMsg::Mint {
+        msg: to_json_binary(&staking_contract::msg::ExecuteMsg::Mint {
             to: env.contract.address.to_string(),
             amount: payout,
         })?,
@@ -157,12 +157,12 @@ pub fn stake_or_send(
     let staking_config: ConfigResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Wasm(
         cosmwasm_std::WasmQuery::Smart {
             contract_addr: config.staking.to_string(),
-            msg: to_json_binary(&staking::msg::QueryMsg::Config {})?,
+            msg: to_json_binary(&staking_contract::msg::QueryMsg::Config {})?,
         },
     ))?;
     let payout_coins = vec![Coin {
         amount: payout,
-        denom: staking_config.ohm,
+        denom: staking_config.ohm_denom,
     }];
 
     let msgs = if !stake {
@@ -173,7 +173,7 @@ pub fn stake_or_send(
     } else {
         CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
             contract_addr: config.staking.to_string(),
-            msg: to_json_binary(&staking::msg::ExecuteMsg::Stake {
+            msg: to_json_binary(&staking_contract::msg::ExecuteMsg::Stake {
                 to: recipient.to_string(),
             })?,
             funds: payout_coins,

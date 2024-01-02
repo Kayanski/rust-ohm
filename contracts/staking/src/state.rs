@@ -5,13 +5,15 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal256, Deps, Order, Timestamp};
 use cw_storage_plus::{Item, Map};
 
-use crate::{msg::{BondContractsResponse, BondContractsElem}, ContractError};
+use crate::{
+    msg::{BondContractsElem, BondContractsResponse},
+    ContractError,
+};
 
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const EPOCH_STATE: Item<EpochState> = Item::new("epoch_state");
 pub const BOND_CONTRACT_INFO: Map<&Addr, BondContractInfo> = Map::new("minter_info");
 
-pub const STAKING_TOKEN_DENOM: &str = "staking_token";
 pub const BASE_TOKEN_DENOM: &str = "base_token";
 
 #[cw_serde]
@@ -19,6 +21,7 @@ pub struct Config {
     pub epoch_length: u64,
     pub epoch_apr: Decimal256,
     pub admin: Addr,
+    pub staking_denom_address: Option<Addr>,
 }
 
 #[cw_serde]

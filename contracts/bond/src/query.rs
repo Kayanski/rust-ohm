@@ -9,19 +9,19 @@ use crate::{
     state::{query_bond_price, Adjustment, Bond, Terms, ADJUSTMENT, BOND_INFO, CONFIG, TERMS},
     ContractError,
 };
-use staking::msg::ConfigResponse;
+use staking_contract::msg::ConfigResponse;
 
 pub fn total_base_supply(deps: Deps) -> Result<Uint128, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let staking_config: ConfigResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Wasm(
         cosmwasm_std::WasmQuery::Smart {
             contract_addr: config.staking.to_string(),
-            msg: to_json_binary(&staking::msg::QueryMsg::Config {})?,
+            msg: to_json_binary(&staking_contract::msg::QueryMsg::Config {})?,
         },
     ))?;
     let supply: SupplyResponse = deps.querier.query(&cosmwasm_std::QueryRequest::Bank(
         cosmwasm_std::BankQuery::Supply {
-            denom: staking_config.ohm,
+            denom: staking_config.ohm_denom,
         },
     ))?;
     Ok(supply.amount.amount)
