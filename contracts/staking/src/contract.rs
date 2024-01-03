@@ -11,7 +11,10 @@ use crate::error::ContractError;
 use crate::execute::{instantiate_staking_token, mint, rebase, stake, unstake};
 use crate::helpers::{create_denom_msg, mint_msgs};
 use crate::msg::{BondContractsElem, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::query::{base_denom, query_config, query_exchange_rate};
+use crate::query::{
+    base_denom, query_config, query_current_staking_points, query_exchange_rate,
+    query_raw_staking_points,
+};
 use crate::state::{
     bond_contracts, BondContractInfo, Config, EpochState, BASE_TOKEN_DENOM, BOND_CONTRACT_INFO,
     CONFIG, EPOCH_STATE,
@@ -33,9 +36,11 @@ pub fn instantiate(
         epoch_length: msg.epoch_length,
         epoch_apr: msg.epoch_apr,
         staking_denom_address: None,
+        next_epoch_apr: None,
     };
 
     let state = EpochState {
+        epoch_start: Timestamp::from_seconds(msg.first_epoch_time),
         epoch_end: Timestamp::from_seconds(msg.first_epoch_time),
         epoch_number: 0,
     };
@@ -110,6 +115,12 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         QueryMsg::ExchangeRate {} => Ok(to_json_binary(&query_exchange_rate(deps, env)?)?),
         QueryMsg::Bonds {} => Ok(to_json_binary(&bond_contracts(deps)?)?),
         QueryMsg::EpochState {} => Ok(to_json_binary(&EPOCH_STATE.load(deps.storage)?)?),
+        QueryMsg::StakingPoints { address } => {
+            Ok(to_json_binary(&query_raw_staking_points(deps, address)?)?)
+        }
+        QueryMsg::RawStakingPoints { address } => Ok(to_json_binary(
+            &query_current_staking_points(deps, env, address)?,
+        )?),
     }
 }
 pub const INSTANTIATE_CONTRACT_REPLY: u64 = 1;
@@ -134,7 +145,6 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
                 c.staking_denom_address = Some(token_addr.clone());
                 Ok::<_, StdError>(c)
             })?;
-            println!("{:?}", token_addr.clone());
             Ok(Response::new().add_attributes(vec![attr("staking-token", token_addr)]))
         }
         _ => Err(ContractError::InvalidReplyId {}),
@@ -161,7 +171,7 @@ pub fn update_config(
         config.epoch_length = epoch_length;
     }
     if let Some(epoch_apr) = epoch_apr {
-        config.epoch_apr = epoch_apr;
+        config.next_epoch_apr = Some(epoch_apr);
     }
     if let Some(add_bond) = add_bond {
         for bond in add_bond {
@@ -289,7 +299,7 @@ pub mod test {
             0,
             contract.address()?.to_string(),
         )?;
-        assert_cw20_balance(chain, sohm_address, 10_000, receiver.address().to_string())?;
+        assert_cw20_balance(chain, sohm_address, 9970, receiver.address().to_string())?;
 
         Ok(())
     }
@@ -307,13 +317,13 @@ pub mod test {
 
         let sohm_address = contract.config()?.sohm_address;
 
-        unstake(&contract, 10_000, None)?;
+        unstake(&contract, 9980, None)?;
 
         assert_cw20_balance(chain.clone(), sohm_address, 0, sender.to_string())?;
         assert_balance(
             chain.clone(),
             contract.config()?.ohm_denom,
-            1_000_000,
+            999999, // A little less balance because the first rebase guarantees the deposits only
             sender.to_string(),
         )?;
         Ok(())
@@ -332,13 +342,6 @@ pub mod test {
             &coins(10_000, contract.config()?.ohm_denom),
         )?;
 
-        assert_cw20_balance(
-            chain.clone(),
-            sohm_address.clone(),
-            10_000,
-            receiver.address().to_string(),
-        )?;
-
         // We send some tokens to the contract, this should double the exchange rate
         chain.bank_send(
             contract.address()?.to_string(),
@@ -353,7 +356,7 @@ pub mod test {
         assert_cw20_balance(
             chain.clone(),
             sohm_address,
-            15_000,
+            14930,
             receiver.address().to_string(),
         )?;
 
@@ -373,13 +376,6 @@ pub mod test {
             &coins(10_000, contract.config()?.ohm_denom),
         )?;
 
-        assert_cw20_balance(
-            chain.clone(),
-            sohm_address.clone(),
-            10_000,
-            receiver.address().to_string(),
-        )?;
-
         // We send some tokens to the contract, this should double the exchange rate
         chain.bank_send(
             contract.address()?.to_string(),
@@ -394,7 +390,7 @@ pub mod test {
         assert_cw20_balance(
             chain.clone(),
             sohm_address,
-            10_000 + 10_000 * 10_000 / (10_000 + 2_563),
+            17866,
             receiver.address().to_string(),
         )?;
 
@@ -428,13 +424,13 @@ pub mod test {
         assert_cw20_balance(
             chain.clone(),
             sohm_address.clone(),
-            5_000,
+            4955,
             receiver.address().to_string(),
         )?;
         assert_cw20_balance(
             chain.clone(),
             sohm_address.clone(),
-            10_000,
+            9960,
             chain.sender().to_string(),
         )?;
         assert_balance(chain, ohm_denom, 0, receiver.address().to_string())?;
@@ -469,13 +465,13 @@ pub mod test {
         assert_cw20_balance(
             chain.clone(),
             sohm_address.clone(),
-            5_000,
+            4955,
             receiver.address().to_string(),
         )?;
         assert_cw20_balance(
             chain.clone(),
             sohm_address.clone(),
-            10_000,
+            9960,
             chain.sender().to_string(),
         )?;
         assert_balance(
@@ -485,11 +481,11 @@ pub mod test {
             receiver.address().to_string(),
         )?;
 
-        unstake(&contract, 10_000, None)?;
+        unstake(&contract, 9960, None)?;
 
         unstake(
             &contract.call_as(&receiver),
-            5_000,
+            4955,
             Some(receiver.address().to_string()),
         )?;
 
@@ -505,7 +501,7 @@ pub mod test {
             0,
             chain.sender().to_string(),
         )?;
-        assert_balance(chain, ohm_denom, 5_000, receiver.address().to_string())?;
+        assert_balance(chain, ohm_denom, 4983, receiver.address().to_string())?;
 
         Ok(())
     }
@@ -535,10 +531,9 @@ pub mod test {
         )?;
 
         // We advance time to make sure we can rebase
-
         contract.rebase()?;
 
-        unstake(&contract, 500_000, None)?;
+        unstake(&contract, 498007, None)?;
 
         assert_cw20_balance(
             chain.clone(),
@@ -549,7 +544,7 @@ pub mod test {
         assert_balance(
             chain.clone(),
             ohm_denom.clone(),
-            550_000,
+            548629,
             contract.address()?.to_string(),
         )?;
 
@@ -558,7 +553,7 @@ pub mod test {
 
         unstake(
             &contract.call_as(&receiver),
-            500_000,
+            495529,
             Some(receiver.address().to_string()),
         )?;
 
@@ -579,10 +574,10 @@ pub mod test {
         assert_balance(
             chain.clone(),
             ohm_denom.clone(),
-            550_000,
+            551371,
             chain.sender().to_string(),
         )?;
-        assert_balance(chain, ohm_denom, 605_000, receiver.address().to_string())?;
+        assert_balance(chain, ohm_denom, 603490, receiver.address().to_string())?;
 
         Ok(())
     }

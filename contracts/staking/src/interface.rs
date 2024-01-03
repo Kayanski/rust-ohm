@@ -8,11 +8,9 @@ pub struct Staking;
 impl<Chain: CwEnv> Uploadable for Staking<Chain> {
     /// Return the path to the wasm file corresponding to the contract
     fn wasm(&self) -> WasmPath {
-        let artifact = artifacts_dir_from_workspace!()
+        artifacts_dir_from_workspace!()
             .find_wasm_path("staking_contract")
-            .unwrap();
-        println!("{:?}", artifact);
-        artifact
+            .unwrap()
     }
     /// Returns a CosmWasm contract wrapper
     fn wrapper(&self) -> Box<dyn MockContract<Empty>> {

@@ -429,7 +429,6 @@ dependencies = [
  "cw20 1.2.2",
  "cw20-base",
  "injective-std 0.1.4",
- "oracle",
  "prost 0.12.3",
  "serde",
  "staking-contract",

@@ -2,8 +2,9 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::deploy::upload::BondConfig;
+use crate::integration::test_constants::bond_terms_1::VESTING_TERM;
 use crate::integration::test_constants::*;
-use crate::tokenfactory::assert_cw20_balance;
+use crate::tokenfactory::{assert_cw20_balance, get_cw20_balance};
 use crate::{
     deploy::upload::{Shogun, ShogunDeployment},
     test_tube,
@@ -25,15 +26,16 @@ use staking_contract::msg::BondContractsElem;
 use staking_contract::msg::ExecuteMsgFns as _;
 use staking_contract::msg::QueryMsgFns as _;
 
+use super::unstake;
+
 pub fn init() -> anyhow::Result<Shogun<InjectiveTestTube>> {
     let chain = test_tube();
 
     let shogun = Shogun::deploy_on(
         chain.clone(),
         ShogunDeployment {
-            base_asset: USD.to_string(),
             epoch_length: EPOCH_LENGTH,
-            first_epoch_time: FIRST_EPOCH_TIME,
+            first_epoch_time: chain.block_info()?.time.seconds() + EPOCH_LENGTH,
             epoch_apr: Decimal256::from_str(EPOCH_APR)?,
             initial_balances: vec![(chain.sender().to_string(), INITIAL_SHOGUN_BALANCE)],
             amount_to_create_denom: AMOUNT_TO_CREATE_DENOM_TEST,
@@ -54,6 +56,8 @@ pub fn init_bond() -> anyhow::Result<(
     let mut shogun = init()?;
     let mut chain = shogun.staking.get_chain().clone();
 
+    let _ = pretty_env_logger::try_init();
+
     let treasury = chain.init_account(vec![])?;
 
     let bond_denom = bond_terms_1::BOND_TOKEN.to_string();
@@ -62,7 +66,6 @@ pub fn init_bond() -> anyhow::Result<(
         BondConfig {
             bond_token_denom: bond_denom.clone(),
             treasury: treasury.address().to_string(),
-            oracle_trust_period: bond_terms_1::ORACLE_TEST_PERIOD,
             terms: Terms {
                 control_variable: Decimal256::from_str(bond_terms_1::CONTROL_VARIABLE)?,
                 max_debt: bond_terms_1::MAX_DEBT.into(),
@@ -81,10 +84,10 @@ pub fn init_bond() -> anyhow::Result<(
 #[test]
 fn deploy_check() -> anyhow::Result<()> {
     let shogun = init()?;
-    let chain = shogun.oracle.get_chain();
+    let chain = shogun.staking.get_chain();
 
-    shogun.oracle.address()?;
     shogun.staking.address()?;
+    shogun.staking_token.address()?;
     shogun.bond_code_id()?;
 
     let config = shogun.staking.config()?;
@@ -95,6 +98,7 @@ fn deploy_check() -> anyhow::Result<()> {
         staking_contract::msg::ConfigResponse {
             admin: chain.sender().to_string(),
             epoch_apr: Decimal256::from_str(EPOCH_APR)?,
+            next_epoch_apr: None,
             epoch_length: EPOCH_LENGTH,
             ohm_denom: shogun.staking.config()?.ohm_denom,
             sohm_address: shogun.staking.config()?.sohm_address,
@@ -103,13 +107,8 @@ fn deploy_check() -> anyhow::Result<()> {
 
     let epoch_state = shogun.staking.epoch_state()?;
 
-    assert_eq!(
-        epoch_state,
-        staking_contract::state::EpochState {
-            epoch_end: Timestamp::from_seconds(FIRST_EPOCH_TIME),
-            epoch_number: 0
-        }
-    );
+    assert_eq!(epoch_state.epoch_number, 0);
+    assert_eq!(epoch_state.epoch_start, epoch_state.epoch_end);
 
     assert_balance(
         chain.clone(),
@@ -130,7 +129,7 @@ fn deploy_check() -> anyhow::Result<()> {
 #[test]
 fn bond_check() -> anyhow::Result<()> {
     let (shogun, bond_contract, treasury) = init_bond()?;
-    let chain = shogun.oracle.get_chain().clone();
+    let chain = shogun.staking.get_chain().clone();
 
     let bond_denom = bond_terms_1::BOND_TOKEN.to_string();
 
@@ -140,12 +139,9 @@ fn bond_check() -> anyhow::Result<()> {
         bond_config,
         bond::msg::ConfigResponse {
             admin: chain.sender().to_string(),
-            oracle: shogun.oracle.address()?.to_string(),
-            oracle_trust_period: bond_terms_1::ORACLE_TEST_PERIOD,
             principle: bond_denom.clone(),
             staking: shogun.staking.address()?.to_string(),
             treasury: treasury.address().to_string(),
-            usd: USD.to_string()
         }
     );
 
@@ -178,7 +174,7 @@ fn bond_check() -> anyhow::Result<()> {
 #[test]
 fn modify_staking_config() -> anyhow::Result<()> {
     let shogun = init()?;
-    let mut chain = shogun.oracle.get_chain().clone();
+    let mut chain = shogun.staking.get_chain().clone();
     let new_admin = chain.init_account(vec![])?;
 
     let new_apr = Decimal256::from_str("1.3493859798")?;
@@ -196,7 +192,8 @@ fn modify_staking_config() -> anyhow::Result<()> {
         shogun.staking.config()?,
         staking_contract::msg::ConfigResponse {
             admin: new_admin.address().to_string(),
-            epoch_apr: new_apr,
+            epoch_apr: Decimal256::from_str(EPOCH_APR)?,
+            next_epoch_apr: Some(new_apr),
             epoch_length: new_epoch_length,
             ohm_denom: shogun.staking.config()?.ohm_denom,
             sohm_address: shogun.staking.config()?.sohm_address,
@@ -209,36 +206,27 @@ fn modify_staking_config() -> anyhow::Result<()> {
 #[test]
 fn modify_bond_config() -> anyhow::Result<()> {
     let (shogun, bond_contract, _treasury) = init_bond()?;
-    let mut chain = shogun.oracle.get_chain().clone();
+    let mut chain = shogun.staking.get_chain().clone();
     let new_admin = chain.init_account(vec![])?;
     let new_treasury = chain.init_account(vec![])?;
     let new_staking = chain.init_account(vec![])?;
-    let new_oracle = chain.init_account(vec![])?;
 
-    let new_usd = "new_usd".to_string();
     let new_principle = "new_principle".to_string();
-    let new_oracle_trust_period = 8023487u64;
 
     bond_contract.update_config(
         Some(new_admin.address().to_string()),
-        Some(new_oracle.address().to_string()),
-        Some(new_oracle_trust_period),
         Some(new_principle.clone()),
         Some(new_staking.address().to_string()),
         Some(new_treasury.address().to_string()),
-        Some(new_usd.clone()),
     )?;
 
     assert_eq!(
         bond_contract.config()?,
         bond::msg::ConfigResponse {
             admin: new_admin.address().to_string(),
-            oracle: new_oracle.address().to_string(),
-            oracle_trust_period: new_oracle_trust_period,
             principle: new_principle,
             staking: new_staking.address().to_string(),
             treasury: new_treasury.address().to_string(),
-            usd: new_usd
         }
     );
     Ok(())
@@ -247,7 +235,7 @@ fn modify_bond_config() -> anyhow::Result<()> {
 #[test]
 fn modify_bond_adjust() -> anyhow::Result<()> {
     let (shogun, bond_contract, _treasury) = init_bond()?;
-    let chain = shogun.oracle.get_chain().clone();
+    let chain = shogun.staking.get_chain().clone();
 
     let new_add = false;
     let new_target = Decimal256::from_str("4736476")?;
@@ -322,18 +310,193 @@ fn full_operations() -> anyhow::Result<()> {
         &coins(10_000, shogun.staking.config()?.ohm_denom),
     )?;
 
-    // use a bond
+    // use a bond. Assert that the price goes up when more bonds are used
+    let bond_price_before = bond_contract.bond_price()?;
     bond_contract.deposit(
         recipient.address().to_string(),
         Decimal256::from_str("2.2")?,
         &coins(10_000, bond_terms_1::BOND_TOKEN),
     )?;
+    let bond_price_after = bond_contract.bond_price()?;
+    println!("{} - {}", bond_price_before, bond_price_after);
+    assert!(bond_price_before < bond_price_after);
 
-    // check that price can evolve and bond react
+    // Check that the bond goes down after some time
+    chain.wait_blocks(VESTING_TERM / 10)?;
+    let bond_price_final = bond_contract.bond_price()?;
+    assert!(bond_price_final < bond_price_after);
+
+    // Rebase and check that exchange rate goes up
+    let exchange_rate_before = shogun.staking.exchange_rate()?;
+    shogun.staking.rebase()?;
+    let exchange_rate_after = shogun.staking.exchange_rate()?;
+    assert!(exchange_rate_before < exchange_rate_after);
 
     Ok(())
 }
 
-// check that exchange rate goes up
-// See if one can just hop on the last moment before the rebase (or equivalent)
-// Check the diamond hand system (did we include it in the end ?)
+#[test]
+fn no_stake_rebase() -> anyhow::Result<()> {
+    let (shogun, _bond_contract, _treasury) = init_bond()?;
+
+    let chain = shogun.staking.get_chain().clone();
+
+    chain.wait_seconds(EPOCH_LENGTH)?;
+    shogun.staking.rebase()?;
+
+    // We verify the last epoch updated is now
+    let epoch_state = shogun.staking.epoch_state()?;
+    assert_eq!(
+        epoch_state.epoch_end.seconds(),
+        chain.block_info()?.time.seconds() + EPOCH_LENGTH - 9 // To account for passed blocks counted by injective test tube
+    );
+
+    Ok(())
+}
+
+#[test]
+fn hop_before_rebase_test() -> anyhow::Result<()> {
+    let (shogun, _bond_contract, _treasury) = init_bond()?;
+
+    let mut chain = shogun.staking.get_chain().clone();
+
+    chain.wait_seconds(EPOCH_LENGTH)?;
+    shogun.staking.rebase()?;
+
+    // We stake before for the recipient
+    let recipient = chain.init_account(vec![])?;
+    shogun.staking.stake(
+        recipient.address().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+
+    // We wait some time just before the epoch end
+    chain.wait_seconds(EPOCH_LENGTH - 10)?;
+
+    // We stake after for the sender
+    shogun.staking.stake(
+        chain.sender().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+
+    // We rebase just there
+    shogun.staking.rebase()?;
+
+    // The balance should not be equal for the 2 participants
+    let config = shogun.staking.config()?;
+
+    assert_ne!(
+        get_cw20_balance(
+            chain.clone(),
+            config.sohm_address.clone(),
+            chain.sender().to_string(),
+        )?,
+        get_cw20_balance(
+            chain.clone(),
+            config.sohm_address,
+            recipient.address().to_string(),
+        )?
+    );
+
+    Ok(())
+}
+
+#[test]
+fn jail_stays() -> anyhow::Result<()> {
+    let (shogun, _bond_contract, _treasury) = init_bond()?;
+    let chain = shogun.staking.get_chain().clone();
+
+    shogun.staking.stake(
+        chain.sender().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+
+    assert!(
+        !shogun
+            .staking
+            .raw_staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+    assert!(
+        !shogun
+            .staking
+            .staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+
+    unstake(&shogun, 10_000, None)?;
+
+    assert!(
+        shogun
+            .staking
+            .raw_staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+    assert!(
+        shogun
+            .staking
+            .staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+    shogun.staking.stake(
+        chain.sender().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+    assert!(
+        shogun
+            .staking
+            .raw_staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+    assert!(
+        shogun
+            .staking
+            .staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+
+    Ok(())
+}
+
+#[test]
+fn jail_does_not_pop() -> anyhow::Result<()> {
+    let (shogun, _bond_contract, _treasury) = init_bond()?;
+    let chain = shogun.staking.get_chain().clone();
+
+    shogun.staking.stake(
+        chain.sender().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+
+    assert!(
+        !shogun
+            .staking
+            .raw_staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+    assert!(
+        !shogun
+            .staking
+            .staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+
+    shogun.staking.stake(
+        chain.sender().to_string(),
+        &coins(10_000, shogun.staking.config()?.ohm_denom),
+    )?;
+    assert!(
+        !shogun
+            .staking
+            .raw_staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+    assert!(
+        !shogun
+            .staking
+            .staking_points(chain.sender().to_string(),)?
+            .jailed
+    );
+
+    Ok(())
+}

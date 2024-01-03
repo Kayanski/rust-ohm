@@ -9,10 +9,7 @@ use cw_orch::{
     deploy::Deploy,
     environment::CwEnv,
     prelude::CwOrchError,
-    state::StateInterface,
 };
-use oracle::msg::QueryMsgFns as _;
-use oracle::{interface::Oracle, msg::ExecuteMsgFns as _};
 use staking_contract::interface::Staking;
 use staking_contract::msg::BondContractsElem;
 use staking_contract::msg::ExecuteMsgFns as _;
@@ -25,7 +22,6 @@ pub const BOND_CODE_ID: &str = "bond-code-id";
 pub struct Shogun<Chain: CwEnv> {
     pub staking: Staking<Chain>,
     pub bonds: HashMap<String, Bond<Chain>>,
-    pub oracle: Oracle<Chain>,
     pub staking_token: StakingToken<Chain>,
 }
 impl<Chain: CwEnv> Deploy<Chain> for Shogun<Chain> {
@@ -38,7 +34,6 @@ impl<Chain: CwEnv> Deploy<Chain> for Shogun<Chain> {
 
         shogun.staking.upload()?;
         shogun.bonds.get(BOND_CODE_ID).unwrap().upload()?;
-        shogun.oracle.upload()?;
         shogun.staking_token.upload()?;
 
         Ok(shogun)
@@ -61,15 +56,15 @@ impl<Chain: CwEnv> Deploy<Chain> for Shogun<Chain> {
     ) -> Vec<Box<&mut dyn cw_orch::prelude::ContractInstance<Chain>>> {
         let staking_box: Box<&mut dyn cw_orch::prelude::ContractInstance<Chain>> =
             Box::new(&mut self.staking);
-        let oracle_box: Box<&mut dyn cw_orch::prelude::ContractInstance<Chain>> =
-            Box::new(&mut self.oracle);
+        let token_box: Box<&mut dyn cw_orch::prelude::ContractInstance<Chain>> =
+            Box::new(&mut self.staking_token);
         self.bonds
             .iter_mut()
             .map(|(_, d)| {
                 let boxed: Box<&mut dyn cw_orch::prelude::ContractInstance<Chain>> = Box::new(d);
                 boxed
             })
-            .chain([staking_box, oracle_box])
+            .chain([staking_box, token_box])
             .collect()
     }
 
@@ -108,13 +103,11 @@ impl<Chain: CwEnv> Shogun<Chain> {
     pub fn new(chain: Chain) -> Self {
         let staking = Staking::new("shogun:staking", chain.clone());
         let bond = Bond::new("shogun:bond", chain.clone());
-        let oracle = Oracle::new("shogun:oracle", chain.clone());
         let staking_token = StakingToken::new("shogun:staking-token", chain.clone());
 
         Self {
             staking,
             bonds: HashMap::from_iter([(BOND_CODE_ID.to_string(), bond)]),
-            oracle,
             staking_token,
         }
     }
@@ -123,18 +116,10 @@ impl<Chain: CwEnv> Shogun<Chain> {
         &self,
         deploy_data: ShogunDeployment,
     ) -> Result<(), <Self as Deploy<Chain>>::Error> {
-        let chain = self.oracle.get_chain();
+        let chain = self.staking.get_chain();
         let sender = chain.sender().to_string();
-        self.oracle.instantiate(
-            &oracle::msg::InstantiateMsg {
-                owner: sender.clone(),
-                base_asset: deploy_data.base_asset,
-            },
-            None,
-            None,
-        )?;
 
-        let instantiate_response = self.staking.instantiate(
+        self.staking.instantiate(
             &staking_contract::msg::InstantiateMsg {
                 admin: Some(sender),
                 epoch_length: deploy_data.epoch_length,
@@ -159,12 +144,9 @@ impl<Chain: CwEnv> Shogun<Chain> {
             self.staking_token.code_id()?,
         )?;
 
-        println!("{:?}", instantiate_response);
-
         let config = self.staking.config()?;
         self.staking_token
             .set_address(&Addr::unchecked(config.sohm_address));
-        println!("{:?}", self.staking.get_chain().state().get_all_addresses());
         Ok(())
     }
 
@@ -177,10 +159,6 @@ impl<Chain: CwEnv> Shogun<Chain> {
         chain: Chain,
         config: BondConfig,
     ) -> Result<(), <Self as Deploy<Chain>>::Error> {
-        // Register the price feed
-        self.oracle
-            .register_feeder(config.bond_token_denom.clone(), chain.sender().to_string())?;
-
         // Instantiate the bond on a new contract
         let bond = Bond::new(
             Self::bond_contract_name(config.bond_token_denom.clone()),
@@ -190,11 +168,8 @@ impl<Chain: CwEnv> Shogun<Chain> {
         bond.instantiate(
             &bond::msg::InstantiateMsg {
                 admin: Some(chain.sender().to_string()),
-                oracle: self.oracle.address()?.to_string(),
-                oracle_trust_period: config.oracle_trust_period,
                 principle: config.bond_token_denom.clone(),
                 staking: self.staking.address()?.to_string(),
-                usd: self.oracle.config()?.base_asset,
                 treasury: config.treasury,
                 terms: config.terms,
             },
@@ -225,7 +200,6 @@ impl<Chain: CwEnv> Shogun<Chain> {
 
 #[cw_serde]
 pub struct ShogunDeployment {
-    pub base_asset: String,
     pub epoch_length: u64,
     pub first_epoch_time: u64,
     pub epoch_apr: Decimal256,
@@ -240,6 +214,5 @@ pub struct ShogunDeployment {
 pub struct BondConfig {
     pub bond_token_denom: String,
     pub treasury: String,
-    pub oracle_trust_period: u64,
     pub terms: Terms,
 }

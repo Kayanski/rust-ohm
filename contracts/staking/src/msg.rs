@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal256, Uint128};
 
-use crate::state::EpochState;
+use crate::state::{EpochState, StakingPoints};
 
 /// Message type for `instantiate` entry_point
 #[cw_serde]
@@ -62,12 +62,17 @@ pub enum QueryMsg {
     Bonds {},
     #[returns(EpochState)]
     EpochState {},
+    #[returns(StakingPoints)]
+    StakingPoints { address: String },
+    #[returns(StakingPoints)]
+    RawStakingPoints { address: String },
 }
 
 #[cw_serde]
 pub struct ConfigResponse {
     pub epoch_length: u64,
     pub epoch_apr: Decimal256,
+    pub next_epoch_apr: Option<Decimal256>,
     pub admin: String,
     pub ohm_denom: String,
     pub sohm_address: String,

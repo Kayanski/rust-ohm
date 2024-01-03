@@ -7,7 +7,7 @@ use staking_contract::msg::ConfigResponse;
 use crate::{
     helpers::{adjust, deposit_one_coin},
     query::{max_payout, payout_for, percent_vested_for},
-    state::{bond_price, bond_price_in_usd, BOND_INFO, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT},
+    state::{bond_price, BOND_INFO, CONFIG, LAST_DECAY, TERMS, TOTAL_DEBT},
     ContractError,
 };
 
@@ -62,7 +62,6 @@ pub fn deposit(
         StdError::generic_err("Max capacity reached")
     );
 
-    let price_in_usd = bond_price_in_usd(deps.as_ref(), env.clone())?;
     let native_price = bond_price(deps.branch(), env.clone())?;
 
     ensure!(
@@ -106,7 +105,6 @@ pub fn deposit(
         bond.payout += payout;
         bond.vesting_time_left = terms.vesting_term;
         bond.last_time = env.clone().block.time;
-        bond.price_paid = price_in_usd;
 
         Ok::<_, ContractError>(bond)
     })?;

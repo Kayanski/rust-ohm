@@ -9,8 +9,14 @@ use injective_std::types::injective::tokenfactory::v1beta1::MsgMint;
 use crate::{
     contract::INSTANTIATE_CONTRACT_REPLY,
     helpers::{deposit_one_coin, mint_msgs},
-    query::{base_denom, current_exchange_rate, staking_token_addr, token_balance},
-    state::{BOND_CONTRACT_INFO, CONFIG, EPOCH_STATE},
+    query::{
+        base_denom, current_exchange_rate, expected_exchange_rate, staking_token_addr,
+        token_balance,
+    },
+    state::{
+        update_staking_points, StakingPoints, BOND_CONTRACT_INFO, CONFIG, EPOCH_STATE,
+        STAKING_POINTS,
+    },
     ContractError,
 };
 
@@ -19,7 +25,7 @@ pub const TOTAL_GONS: u128 = u128::MAX - (u128::MAX % INITIAL_FRAGMENTS_SUPPLY);
 pub const MAX_SUPPLY: u128 = u64::MAX as u128;
 
 pub fn rebase(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
+    let mut config = CONFIG.load(deps.storage)?;
     let mut epoch_state = EPOCH_STATE.load(deps.storage)?;
 
     if epoch_state.epoch_end > env.block.time {
@@ -31,40 +37,54 @@ pub fn rebase(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response, C
     let rebase_amount = Uint256::from(current_balance) * config.epoch_apr;
 
     // Mint some new ohm to this contract : this is where the APR comes from !
-    let msg = CosmosMsg::Stargate {
-        type_url: MsgMint::TYPE_URL.to_string(),
-        value: MsgMint {
-            sender: env.contract.address.to_string(),
-            amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
-                denom: base_denom(&env),
-                amount: rebase_amount.to_string(),
-            }),
-        }
-        .encode_to_vec()
-        .into(),
+    let msg = if rebase_amount.is_zero() {
+        None
+    } else {
+        Some(CosmosMsg::Stargate {
+            type_url: MsgMint::TYPE_URL.to_string(),
+            value: MsgMint {
+                sender: env.contract.address.to_string(),
+                amount: Some(injective_std::types::cosmos::base::v1beta1::Coin {
+                    denom: base_denom(&env),
+                    amount: rebase_amount.to_string(),
+                }),
+            }
+            .encode_to_vec()
+            .into(),
+        })
     };
 
+    epoch_state.epoch_start = epoch_state.epoch_end;
     epoch_state.epoch_end = epoch_state.epoch_end.plus_seconds(config.epoch_length);
     epoch_state.epoch_number += 1;
 
-    EPOCH_STATE.save(deps.storage, &epoch_state)?;
+    if let Some(next_epoch_apr) = config.next_epoch_apr {
+        config.next_epoch_apr = None;
+        config.epoch_apr = next_epoch_apr;
+    }
 
-    Ok(Response::new().add_message(msg))
+    EPOCH_STATE.save(deps.storage, &epoch_state)?;
+    CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new().add_messages(msg))
 }
 
 pub fn stake(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     to: String,
 ) -> Result<Response, ContractError> {
     let deposited_amount = deposit_one_coin(info, base_denom(&env))?;
 
-    let exchange_rate = current_exchange_rate(deps.as_ref(), &env, Some(deposited_amount))?;
+    // We correct the exchange rate to avoid people sniping the rebase rate
+    let exchange_rate = expected_exchange_rate(deps.as_ref(), &env, Some(deposited_amount))?;
 
     let mint_amount =
         (Decimal256::from_ratio(deposited_amount, 1u128) / exchange_rate) * Uint256::one();
 
+    let to_addr = deps.api.addr_validate(&to)?;
+    update_staking_points(deps.branch(), env, &to_addr, mint_amount.try_into()?)?;
     // We mint some sOHM to the to address
     let mint_msg = CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
         contract_addr: staking_token_addr(deps.as_ref())?.to_string(),
@@ -88,6 +108,19 @@ pub fn unstake(
     let exchange_rate = current_exchange_rate(deps.as_ref(), &env, None)?;
 
     let redeem_amount = Uint256::from(amount) * exchange_rate;
+
+    // We update the staking points
+    STAKING_POINTS.update(deps.storage, &info.sender, |points| match points {
+        None => Ok::<_, StdError>(StakingPoints {
+            jailed: true,
+            total_points: Uint128::zero(),
+            last_points_updated: 0,
+        }),
+        Some(mut staking_points) => {
+            staking_points.jailed = true;
+            Ok(staking_points)
+        }
+    })?;
 
     // We burn the received sOHM from this contract
     let burn_msg = CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {

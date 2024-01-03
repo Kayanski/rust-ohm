@@ -6,12 +6,9 @@ use crate::state::{Adjustment, Bond, Terms};
 /// Message type for `instantiate` entry_point
 #[cw_serde]
 pub struct InstantiateMsg {
-    pub usd: String,
     pub principle: String,
-    pub oracle: String,
     pub admin: Option<String>,
     pub staking: String,
-    pub oracle_trust_period: u64, // We recommend something along the lines of 10 minutes = 600)
     pub terms: Terms,
     pub treasury: String,
 }
@@ -33,12 +30,9 @@ pub enum ExecuteMsg {
         terms: Terms,
     },
     UpdateConfig {
-        usd: Option<String>,
         principle: Option<String>,
         admin: Option<String>,
         staking: Option<String>,
-        oracle: Option<String>,
-        oracle_trust_period: Option<u64>,
         treasury: Option<String>,
     },
     UpdateAdjustment {
@@ -71,11 +65,7 @@ pub enum QueryMsg {
     #[returns(Decimal256)]
     BondPrice {},
     #[returns(Decimal256)]
-    AssetPrice {},
-    #[returns(Decimal256)]
     DebtRatio {},
-    #[returns(Decimal256)]
-    StandardizedDebtRatio {},
     #[returns(Uint128)]
     CurrentDebt {},
     #[returns(Decimal256)]
@@ -90,11 +80,8 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct ConfigResponse {
-    pub usd: String,
     pub principle: String,
     pub admin: String,
     pub staking: String,
-    pub oracle: String,
-    pub oracle_trust_period: u64, // in Seconds
     pub treasury: String,
 }

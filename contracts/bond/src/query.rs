@@ -1,8 +1,4 @@
-use cosmwasm_std::{
-    to_json_binary, Addr, Decimal256, Deps, Env, StdError, SupplyResponse, Timestamp, Uint128,
-    Uint256,
-};
-use oracle::msg::PriceResponse;
+use cosmwasm_std::{to_json_binary, Addr, Decimal256, Deps, Env, SupplyResponse, Uint128, Uint256};
 
 use crate::{
     execute::current_debt,
@@ -36,12 +32,6 @@ pub fn debt_ratio(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
     ))
 }
 
-pub fn standardized_debt_ratio(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
-    let debt_ratio = debt_ratio(deps, env.clone())?;
-
-    Ok(debt_ratio * asset_price(deps, env)?)
-}
-
 pub fn circulating_supply(deps: Deps) -> Result<Uint128, ContractError> {
     Ok(cw20_base::contract::query_token_info(deps)?.total_supply)
 }
@@ -50,12 +40,9 @@ pub fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractEr
     let config = CONFIG.load(deps.storage)?;
 
     Ok(crate::msg::ConfigResponse {
-        usd: config.usd,
         principle: config.principle,
         admin: config.admin.to_string(),
         staking: config.staking.to_string(),
-        oracle: config.oracle.to_string(),
-        oracle_trust_period: config.oracle_trust_period,
         treasury: config.treasury.to_string(),
     })
 }
@@ -66,37 +53,6 @@ pub fn query_terms(deps: Deps) -> Result<Terms, ContractError> {
 
 pub fn query_adjustment(deps: Deps) -> Result<Adjustment, ContractError> {
     Ok(ADJUSTMENT.load(deps.storage)?)
-}
-
-pub fn asset_price(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    // We query the price from the oracle
-    let price: PriceResponse = deps
-        .querier
-        .query(&cosmwasm_std::QueryRequest::Wasm(
-            cosmwasm_std::WasmQuery::Smart {
-                contract_addr: config.oracle.to_string(),
-                msg: to_json_binary(&oracle::msg::QueryMsg::Price {
-                    base: config.principle.clone(),
-                    quote: config.usd.clone(),
-                })?,
-            },
-        ))
-        .or(Err(StdError::generic_err(format!(
-            "Error when querying oracle price for {}-{}",
-            config.usd, config.principle
-        ))))?;
-
-    // We assert the price is not too old
-    if Timestamp::from_seconds(price.last_updated_base).plus_seconds(config.oracle_trust_period)
-        < env.block.time
-        || Timestamp::from_seconds(price.last_updated_quote)
-            .plus_seconds(config.oracle_trust_period)
-            < env.block.time
-    {
-        Err(StdError::generic_err("Price data is too old for bonding"))?;
-    }
-    Ok(price.rate)
 }
 
 pub fn payout_for(deps: Deps, env: Env, value: Uint128) -> Result<Uint128, ContractError> {

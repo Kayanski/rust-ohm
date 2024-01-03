@@ -5,10 +5,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal256, Deps, DepsMut, Env, Timestamp, Uint128};
 use cw_storage_plus::{Item, Map};
 
-use crate::{
-    query::{asset_price, debt_ratio},
-    ContractError,
-};
+use crate::{query::debt_ratio, ContractError};
 
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const TERMS: Item<Terms> = Item::new("terms");
@@ -21,12 +18,9 @@ pub const BOND_INFO: Map<&Addr, Bond> = Map::new("bond_info");
 
 #[cw_serde]
 pub struct Config {
-    pub usd: String,
     pub principle: String,
     pub admin: Addr,
     pub staking: Addr,
-    pub oracle: Addr,
-    pub oracle_trust_period: u64, // in Seconds
     pub treasury: Addr,
 }
 
@@ -54,7 +48,6 @@ pub struct Terms {
 #[derive(Default)]
 pub struct Bond {
     pub payout: Uint128,
-    pub price_paid: Decimal256,
     pub vesting_time_left: u64,
     pub last_time: Timestamp,
 }
@@ -89,12 +82,6 @@ pub fn query_bond_price(deps: Deps, env: Env) -> Result<Decimal256, ContractErro
     if price < terms.minimum_price {
         price = terms.minimum_price;
     }
-
-    Ok(price)
-}
-
-pub fn bond_price_in_usd(deps: Deps, env: Env) -> Result<Decimal256, ContractError> {
-    let price = query_bond_price(deps, env.clone())? * asset_price(deps, env)?;
 
     Ok(price)
 }

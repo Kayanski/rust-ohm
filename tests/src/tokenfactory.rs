@@ -96,15 +96,27 @@ pub fn assert_cw20_balance<Chain: CwEnv>(
 where
     <Chain as TxHandler>::Error: Sync + Send + std::error::Error + 'static,
 {
-    let token = StakingToken::new("token_address", chain.clone());
-    token.set_address(&Addr::unchecked(token_address));
-
-    let current_balance = token.balance(address)?;
-    let balance = current_balance.balance.u128();
+    let balance = get_cw20_balance(chain, token_address, address)?;
 
     if balance != amount {
         bail!("Wrong balance, Expected {}, got {}", amount, balance);
     }
 
     Ok(())
+}
+
+pub fn get_cw20_balance<Chain: CwEnv>(
+    chain: Chain,
+    token_address: String,
+    address: String,
+) -> anyhow::Result<u128>
+where
+    <Chain as TxHandler>::Error: Sync + Send + std::error::Error + 'static,
+{
+    let token = StakingToken::new("token_address", chain.clone());
+    token.set_address(&Addr::unchecked(token_address));
+
+    let current_balance = token.balance(address)?;
+    let balance = current_balance.balance.u128();
+    Ok(balance)
 }

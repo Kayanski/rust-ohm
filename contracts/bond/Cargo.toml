@@ -24,7 +24,6 @@ prost = "0.12.3"
 cw-orch = { workspace = true, optional = true }
 injective-std = { workspace = true }
 staking-contract = { workspace = true, features = ["library"] }
-oracle = { workspace = true, features = ["library"] }
 
 [dev-dependencies]
 anyhow = "1.0.75"
@@ -33,7 +32,6 @@ serde = "1.0.193"
 bond = { path = ".", features = ["interface"] }
 test-fuzz = "3.1.0"
 tests = { path = "../../tests" }
-oracle = { workspace = true, features = ["interface"] }
 
 # Backup release profile, will result in warnings during optimization
 [profile.release]

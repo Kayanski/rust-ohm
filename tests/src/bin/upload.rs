@@ -26,7 +26,6 @@ pub fn main() -> anyhow::Result<()> {
     // let shogun = Shogun::new(chain.clone());
     let shogun = Shogun::store_on(chain.clone())?;
     shogun.instantiate(ShogunDeployment {
-        base_asset: "uusd".to_string(),
         epoch_length: 100,
         first_epoch_time: block_info.time.seconds() + 1,
         epoch_apr: Decimal256::from_str("0.1")?,
