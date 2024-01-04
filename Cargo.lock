@@ -1143,6 +1143,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cw-paginate"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "add278617f6251be1a35c781eb0fbffd44f899d8bb4dc5a9e420273a90684c4e"
+dependencies = [
+ "cosmwasm-std",
+ "cw-storage-plus 1.1.0",
+ "serde",
+]
+
+[[package]]
 name = "cw-storage-plus"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2677,6 +2688,31 @@ name = "linux-raw-sys"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4cd1a83af159aa67994778be9070f0ae1bd732942279cabb14f86f986a21456"
+
+[[package]]
+name = "lock-contract"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cosmos-sdk-proto 0.19.0",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-asset",
+ "cw-orch",
+ "cw-paginate",
+ "cw-storage-plus 1.1.0",
+ "cw20 1.2.2",
+ "cw20-base",
+ "injective-std 0.1.4",
+ "lock-contract",
+ "prost 0.12.3",
+ "protobuf",
+ "serde",
+ "staking-token",
+ "test-fuzz",
+ "tests",
+ "thiserror",
+]
 
 [[package]]
 name = "lock_api"
