@@ -1,18 +1,23 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
 use cw_asset::{AssetBase, AssetInfo};
 
 use crate::{
     helpers::deposit_one_coin,
-    state::{ACCEPTED_TOKENS, DEPOSITED_TOKENS},
+    query::_available_unlock,
+    state::{
+        deposit::{deposits, DepositInfo, DepositLock},
+        ACCEPTED_TOKENS, CONFIG,
+    },
     ContractError,
 };
 
-pub fn lock(
+pub fn execute_lock(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
     to: String,
     token: AssetBase<String>,
+    lock: DepositLock,
 ) -> Result<Response, ContractError> {
     let to_addr = deps.api.addr_validate(&to)?;
     let token = token.check(deps.api, None)?;
@@ -27,10 +32,23 @@ pub fn lock(
     let token = fee.apply(token)?;
 
     // We save the deposit info
-    DEPOSITED_TOKENS.update(deps.storage, (&to_addr, &token.info), |deposit| {
-        let deposit = deposit.unwrap_or_default() + token.amount;
-        Ok::<_, ContractError>(deposit)
-    })?;
+    let next_deposit_id = CONFIG
+        .update(deps.storage, |mut c| {
+            c.next_deposit_id += 1;
+            Ok::<_, ContractError>(c)
+        })?
+        .next_deposit_id;
+
+    deposits().save(
+        deps.storage,
+        next_deposit_id,
+        &DepositInfo {
+            id: next_deposit_id,
+            lock,
+            recipient: to_addr,
+            asset: token.clone(),
+        },
+    )?;
 
     // We transfer the tokens
     let msg = match &token.info {
@@ -38,7 +56,10 @@ pub fn lock(
         AssetInfo::Native(denom) => {
             let amount = deposit_one_coin(info, denom.to_string())?;
             if amount != token.amount {
-                return Err(ContractError::AssetNotAccepted { token: token.info });
+                return Err(ContractError::NotEnoughDeposited {
+                    expected: token.amount,
+                    got: amount,
+                });
             }
             None
         }
@@ -48,28 +69,52 @@ pub fn lock(
     Ok(Response::new().add_messages(msg))
 }
 
-pub fn unlock(
+pub fn execute_unlock(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     to: String,
-    token: AssetBase<String>,
+    id: u64,
 ) -> Result<Response, ContractError> {
-    let token = token.check(deps.api, None)?;
+    let mut deposit_info = deposits().load(deps.storage, id)?;
 
-    DEPOSITED_TOKENS.update(deps.storage, (&info.sender, &token.info), |deposit| {
-        let deposit = deposit.unwrap_or_default();
+    if info.sender != deposit_info.recipient && to != deposit_info.recipient {
+        return Err(ContractError::Unauthorized {});
+    }
 
-        if deposit < token.amount {
-            Err(ContractError::NotEnoughDeposited {
-                expected: token.amount,
-                got: deposit,
-            })
-        } else {
-            Ok(token.amount - deposit)
+    let available_deposit =
+        _available_unlock(deps.as_ref(), &env, &deposit_info)?.unwrap_or(AssetBase {
+            info: deposit_info.asset.info,
+            amount: Uint128::zero(),
+        });
+
+    if available_deposit.amount.is_zero() {
+        return Err(ContractError::NotEnoughDeposited {
+            expected: Uint128::one(),
+            got: Uint128::zero(),
+        });
+    }
+
+    match deposit_info.lock {
+        crate::state::deposit::DepositLock::Linear(ref mut lock) => {
+            if lock.start < env.block.time {
+                lock.start = env.block.time;
+            }
+            deposit_info.asset.amount -= available_deposit.amount;
         }
-    })?;
+        crate::state::deposit::DepositLock::LinearProportion(ref mut lock) => {
+            if lock.start < env.block.time {
+                lock.start = env.block.time;
+            }
+            deposit_info.asset.amount -= available_deposit.amount;
+        }
+        crate::state::deposit::DepositLock::TimeUnlock(end) => {
+            if end < env.block.time.seconds() {
+                deposit_info.asset.amount -= available_deposit.amount;
+            }
+        }
+    }
 
-    let msg = token.transfer_msg(to)?;
+    let msg = available_deposit.transfer_msg(to)?;
     Ok(Response::new().add_message(msg))
 }

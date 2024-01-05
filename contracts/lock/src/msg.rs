@@ -1,7 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cw_asset::{AssetBase, AssetInfoBase};
 
-use crate::state::Fee;
+use crate::state::{
+    deposit::{DepositInfo, DepositLock},
+    Fee,
+};
 
 /// Message type for `instantiate` entry_point
 #[cw_serde]
@@ -28,10 +31,11 @@ pub enum ExecuteMsg {
     Lock {
         to: String,
         asset: AssetBase<String>,
+        lock: DepositLock,
     },
     Unlock {
         to: String,
-        asset: AssetBase<String>,
+        id: u64,
     },
     UpdateConfig {
         admin: Option<String>,
@@ -54,15 +58,14 @@ pub enum QueryMsg {
         start: Option<AssetInfoBase<String>>,
         limit: Option<u32>,
     },
+    #[returns(DepositInfoResponse)]
+    Lock { id: u64 },
     #[returns(AssetBase<String>)]
-    LockForToken {
-        address: String,
-        token: AssetInfoBase<String>,
-    },
-    #[returns(Vec<AssetBase<String>>)]
+    AvailableUnlock { id: u64 },
+    #[returns(Vec<DepositInfoResponse>)]
     LocksForAddress {
         address: String,
-        start: Option<AssetInfoBase<String>>,
+        start: Option<u64>,
         limit: Option<u32>,
     },
 }
@@ -73,12 +76,20 @@ pub struct ConfigResponse {
 }
 
 #[cw_serde]
-pub struct BondContractsResponse {
-    pub bonds: Vec<BondContractsElem>,
+pub struct DepositInfoResponse {
+    pub id: u64,
+    pub lock: DepositLock,
+    pub recipient: String,
+    pub asset: AssetBase<String>,
 }
 
-#[cw_serde]
-pub struct BondContractsElem {
-    pub bond_token: String,
-    pub bond_address: String,
+impl From<DepositInfo> for DepositInfoResponse {
+    fn from(value: DepositInfo) -> Self {
+        Self {
+            id: value.id,
+            lock: value.lock,
+            recipient: value.recipient.to_string(),
+            asset: value.asset.into(),
+        }
+    }
 }

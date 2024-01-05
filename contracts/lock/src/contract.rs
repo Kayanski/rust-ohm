@@ -1,11 +1,13 @@
-use crate::execute::{lock, unlock};
+use crate::execute::{execute_lock, execute_unlock};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 
 use crate::error::ContractError;
 use crate::msg::{AcceptedTokenUnchecked, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::query::{lock_for_token, locks_for_address, query_accepted_tokens, query_config};
+use crate::query::{
+    locks_for_address, query_accepted_tokens, query_available_unlock, query_config, query_lock,
+};
 use crate::state::{Config, ACCEPTED_TOKENS, CONFIG};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -21,6 +23,7 @@ pub fn instantiate(
             .map(|addr| deps.api.addr_validate(&addr))
             .transpose()?
             .unwrap_or(info.sender),
+        next_deposit_id: 0,
     };
 
     msg.accepted_tokens
@@ -50,8 +53,8 @@ pub fn execute(
         ExecuteMsg::UpdateAcceptedToken { to_add, to_remove } => {
             update_accepted_token(deps, info, to_add, to_remove)
         }
-        ExecuteMsg::Lock { to, asset } => lock(deps, env, info, to, asset),
-        ExecuteMsg::Unlock { to, asset } => unlock(deps, env, info, to, asset),
+        ExecuteMsg::Lock { to, asset, lock } => execute_lock(deps, env, info, to, asset, lock),
+        ExecuteMsg::Unlock { to, id } => execute_unlock(deps, env, info, to, id),
     }
 }
 
@@ -63,8 +66,9 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         QueryMsg::AcceptedTokens { start, limit } => Ok(to_json_binary(&query_accepted_tokens(
             deps, env, start, limit,
         )?)?),
-        QueryMsg::LockForToken { address, token } => {
-            Ok(to_json_binary(&lock_for_token(deps, env, address, token)?)?)
+        QueryMsg::Lock { id } => Ok(to_json_binary(&query_lock(deps, env, id)?)?),
+        QueryMsg::AvailableUnlock { id } => {
+            Ok(to_json_binary(&query_available_unlock(deps, env, id)?)?)
         }
         QueryMsg::LocksForAddress {
             address,
