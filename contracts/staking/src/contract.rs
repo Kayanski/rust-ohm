@@ -209,7 +209,7 @@ pub mod test {
     use staking_contract::msg::InstantiateMsg;
     use staking_contract::msg::QueryMsgFns;
     use tests::tokenfactory::assert_balance;
-    pub const AMOUNT_TO_CREATE_DENOM: u128 = 10_000_000_000_000_000_000u128;
+    pub const AMOUNT_TO_CREATE_DENOM: u128 = u128::pow(10, 19);
     pub const FUNDS_MULTIPLIER: u128 = 100_000;
     pub const EPOCH_LENGTH: u64 = 100;
 

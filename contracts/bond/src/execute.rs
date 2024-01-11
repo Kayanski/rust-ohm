@@ -127,22 +127,20 @@ pub fn redeem(
     let percent_vested = percent_vested_for(deps.as_ref(), env.clone(), &recipient_addr)?;
     if percent_vested >= Decimal256::one() {
         BOND_INFO.remove(deps.storage, &recipient_addr);
-        stake_or_send(deps.as_ref(), recipient_addr, stake, bond.payout)
-    } else {
-        let payout = Uint256::from(bond.payout) * percent_vested;
-
-        if payout.is_zero() {
-            Err(StdError::generic_err("Nothing to redeem here !"))?;
-        }
-
-        bond.payout -= Uint128::try_from(payout)?;
-        bond.vesting_time_left -= env.block.time.seconds() - bond.last_time.seconds();
-        bond.last_time = env.block.time;
-
-        BOND_INFO.save(deps.storage, &recipient_addr, &bond)?;
-
-        stake_or_send(deps.as_ref(), recipient_addr, stake, payout.try_into()?)
+        return stake_or_send(deps.as_ref(), recipient_addr, stake, bond.payout);
     }
+    let payout = Uint256::from(bond.payout) * percent_vested;
+    if payout.is_zero() {
+        Err(StdError::generic_err("Nothing to redeem here !"))?;
+    }
+
+    bond.payout -= Uint128::try_from(payout)?;
+    bond.vesting_time_left -= env.block.time.seconds() - bond.last_time.seconds();
+    bond.last_time = env.block.time;
+
+    BOND_INFO.save(deps.storage, &recipient_addr, &bond)?;
+
+    stake_or_send(deps.as_ref(), recipient_addr, stake, payout.try_into()?)
 }
 
 pub fn stake_or_send(

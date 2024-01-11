@@ -188,25 +188,28 @@ pub mod test {
     use cosmwasm_std::coins;
     use cosmwasm_std::Decimal256;
     use cosmwasm_std::Uint128;
+    use cosmwasm_std::Uint256;
+    use cw_orch::injective_test_tube::injective_test_tube::Account;
     use cw_orch::injective_test_tube::injective_test_tube::SigningAccount;
     use cw_orch::{injective_test_tube::InjectiveTestTube, prelude::*};
 
     use bond::interface::Bond;
     use bond::msg::ExecuteMsgFns as _;
     use bond::msg::QueryMsgFns;
-    use cw_orch::injective_test_tube::injective_test_tube::Account;
+    use bond::state::Terms;
+
     use staking_contract::msg::QueryMsgFns as _;
     use tests::deploy::upload::BondConfig;
     use tests::deploy::upload::Shogun;
     use tests::deploy::upload::ShogunDeployment;
     use tests::tokenfactory::assert_balance;
 
-    use bond::state::Terms;
-
-    pub const AMOUNT_TO_CREATE_DENOM: u128 = 10_000_000_000_000_000_000u128;
+    pub const AMOUNT_TO_CREATE_DENOM: u128 = u128::pow(10, 19);
     pub const FUNDS_MULTIPLIER: u128 = 100_000;
     pub const BOND_TOKEN: &str = "ubond";
     pub const USD_TOKEN: &str = "uusd";
+    pub const EPOCH_LENGTH: u64 = 100;
+    pub const VESTING_TERM: u64 = 3600u64;
 
     pub fn init() -> anyhow::Result<(
         Shogun<InjectiveTestTube>,
@@ -225,7 +228,7 @@ pub mod test {
         let mut shogun = Shogun::deploy_on(
             chain.clone(),
             ShogunDeployment {
-                epoch_length: 100,
+                epoch_length: EPOCH_LENGTH,
                 first_epoch_time: block_info.time.seconds() + 1,
                 epoch_apr: Decimal256::from_str("0.1")?,
                 initial_balances: vec![(chain.sender().to_string(), 1_000_000u128)],
@@ -246,7 +249,7 @@ pub mod test {
                     minimum_price: Decimal256::from_str("2")?,
                     max_payout: Decimal256::from_str("0.2")?,
                     max_debt: 500_000u128.into(),
-                    vesting_term: 3600u64, // 1h
+                    vesting_term: VESTING_TERM, // 1h
                 },
             },
         )?;
@@ -271,18 +274,24 @@ pub mod test {
         let chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("2")?;
-        assert_eq!(bond.bond_price()?, Decimal256::from_str("2")?);
+        let deposit_amount = 10_000u128;
+        assert_eq!(bond.bond_price()?, max_price);
 
+        let payout_for_1 = bond.payout_for(deposit_amount.into())?;
+        assert_eq!(
+            Uint256::from_uint128(payout_for_1),
+            (Decimal256::from_ratio(deposit_amount, 1u128) / max_price).to_uint_floor()
+        );
         bond.deposit(
             chain.sender().to_string(),
             max_price,
-            &coins(10_000, BOND_TOKEN),
+            &coins(deposit_amount, BOND_TOKEN),
         )?;
 
         assert_balance(
             chain.clone(),
             BOND_TOKEN.to_string(),
-            10_000,
+            deposit_amount,
             treasury.address().to_string(),
         )?;
 
@@ -292,7 +301,7 @@ pub mod test {
         assert_eq!(
             term,
             bond::state::Bond {
-                payout: 5_000u128.into(),
+                payout: 5000u128.into(),
                 vesting_time_left: 3600,
                 last_time: chain.block_info()?.time
             }
@@ -378,33 +387,40 @@ pub mod test {
         let chain = bond.get_chain().clone();
 
         let max_price = Decimal256::from_str("5")?;
+        let deposit_amount = 10_000;
+
+        let payout_for_1 = bond.payout_for(deposit_amount.into())?;
 
         bond.deposit(
             chain.sender().to_string(),
             max_price,
-            &coins(10_000, BOND_TOKEN),
+            &coins(deposit_amount, BOND_TOKEN),
         )?;
+        let term_1 = bond.bond_info(chain.sender().to_string())?;
+        assert_eq!(term_1.payout, payout_for_1);
 
+        let payout_for_2 = bond.payout_for(deposit_amount.into())?;
         bond.deposit(
             chain.sender().to_string(),
             max_price,
-            &coins(10_000, BOND_TOKEN),
+            &coins(deposit_amount, BOND_TOKEN),
         )?;
 
         // assert bond exists and has the right terms
-        let term = bond.bond_info(chain.sender().to_string())?;
+        let term_2 = bond.bond_info(chain.sender().to_string())?;
+        assert_eq!(term_2.payout, payout_for_1 + payout_for_2);
 
         assert_balance(
             chain.clone(),
             BOND_TOKEN.to_string(),
-            20_000,
+            2 * deposit_amount,
             treasury.address().to_string(),
         )?;
 
         assert_eq!(
-            term,
+            term_2,
             bond::state::Bond {
-                payout: 7010u128.into(),
+                payout: payout_for_1 + payout_for_2,
                 vesting_time_left: 3600,
                 last_time: chain.block_info()?.time
             }
@@ -418,25 +434,27 @@ pub mod test {
         let (_shogun, bond, treasury) = init()?;
         let chain = bond.get_chain().clone();
 
-        let max_price = Decimal256::from_str("2.5")?;
+        let max_price_1 = Decimal256::from_str("2.5")?;
+        let max_price_2 = Decimal256::from_str("0.5")?;
+        let deposit_amount = 10_000;
 
         bond.deposit(
             chain.sender().to_string(),
-            max_price,
-            &coins(10_000, BOND_TOKEN),
+            max_price_1,
+            &coins(deposit_amount, BOND_TOKEN),
         )?;
 
         chain.wait_blocks(180)?;
 
         assert_eq!(
             bond.percent_vested_for(chain.sender().to_string())?,
-            Decimal256::from_str("0.5")?
+            max_price_2
         );
 
         bond.deposit(
             chain.sender().to_string(),
-            max_price,
-            &coins(10_000, BOND_TOKEN),
+            max_price_1,
+            &coins(deposit_amount, BOND_TOKEN),
         )?;
 
         // assert bond exists and has the right terms
@@ -445,7 +463,7 @@ pub mod test {
         assert_balance(
             chain.clone(),
             BOND_TOKEN.to_string(),
-            20_000,
+            2 * deposit_amount,
             treasury.address().to_string(),
         )?;
 
