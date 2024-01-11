@@ -1,0 +1,28 @@
+[package]
+name = "tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cw-plus-interface = { git = "https://github.com/abstractsdk/cw-plus", version = "1.2.2" }
+anyhow = "1.0.75"
+cosmwasm-std.workspace = true
+cw-orch = { workspace = true, features = ["eth", "injective-test-tube"] }
+cw20-base = { workspace = true, features = ["interface", "library"] }
+cw20 = { workspace = true, features = ["interface"] }
+injective-std.workspace = true
+prost = { workspace = true }
+prost-types = { workspace = true }
+cosmos-sdk-proto = { workspace = true }
+staking-contract = { workspace = true, features = ["interface", "library"] }
+staking-token = { workspace = true, features = ["interface", "library"] }
+oracle = { workspace = true, features = ["interface", "library"] }
+bond = { workspace = true, features = ["interface", "library"] }
+dotenv = "0.15.0"
+pretty_env_logger = "0.5.0"
+cosmwasm-schema.workspace = true

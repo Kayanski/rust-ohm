@@ -1,14 +1,11 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod contract;
+mod error;
+pub mod execute;
+pub mod msg;
+pub mod query;
+pub mod state;
+pub use crate::error::ContractError;
+pub mod helpers;
+#[cfg(feature = "interface")]
+pub mod interface;
+pub mod response;
