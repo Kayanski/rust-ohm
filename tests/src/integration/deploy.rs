@@ -5,7 +5,7 @@ use super::unstake;
 use crate::deploy::upload::BondConfig;
 use crate::integration::test_constants::bond_terms_1::VESTING_TERM;
 use crate::integration::test_constants::*;
-use crate::tokenfactory::{assert_cw20_balance, get_cw20_balance};
+use crate::tokenfactory::assert_cw20_balance;
 use crate::{
     deploy::upload::{Shogun, ShogunDeployment},
     test_tube,
@@ -30,7 +30,7 @@ use staking_contract::msg::ExecuteMsgFns as _;
 use staking_contract::msg::QueryMsgFns as _;
 use staking_contract::state::StakingPoints;
 
-pub const WARMUP_LENGTH: u64 = 50;
+pub const WARMUP_LENGTH: u64 = 10_000;
 
 pub fn init() -> anyhow::Result<Shogun<InjectiveTestTube>> {
     let chain = test_tube();
@@ -90,6 +90,26 @@ pub fn init_bond() -> anyhow::Result<(
     Ok((shogun.clone(), bond_contract.clone(), treasury))
 }
 
+pub fn stake_and_claim<Chain: CwEnv>(
+    shogun: &Shogun<Chain>,
+    amount: u128,
+    receiver: Option<String>,
+) -> anyhow::Result<()> {
+    let sender = shogun.staking.get_chain().sender().to_string();
+    let receiver = receiver.unwrap_or_else(|| shogun.staking.get_chain().sender().to_string());
+    shogun
+        .staking
+        .stake(sender, &coins(amount, shogun.staking.config()?.ohm_denom))?;
+    shogun
+        .staking
+        .get_chain()
+        .wait_seconds(WARMUP_LENGTH)
+        .unwrap();
+
+    shogun.staking.claim(receiver)?;
+
+    Ok(())
+}
 #[test]
 fn deploy_check() -> anyhow::Result<()> {
     let shogun = init()?;
@@ -314,14 +334,9 @@ fn full_operations() -> anyhow::Result<()> {
     let mut chain = shogun.staking.get_chain().clone();
     let recipient = chain.init_account(vec![])?;
     // Stake users
-    shogun.staking.stake(
-        chain.sender().to_string(),
-        &coins(10_000, shogun.staking.config()?.ohm_denom),
-    )?;
-    shogun.staking.stake(
-        recipient.address().to_string(),
-        &coins(10_000, shogun.staking.config()?.ohm_denom),
-    )?;
+
+    stake_and_claim(&shogun, 10_000, None)?;
+    stake_and_claim(&shogun, 10_000, Some(recipient.address().to_string()))?;
 
     // use a bond. Assert that the price goes up when more bonds are used
     let bond_price_before = bond_contract.bond_price()?;
@@ -341,8 +356,11 @@ fn full_operations() -> anyhow::Result<()> {
 
     // Rebase and check that exchange rate goes up
     let exchange_rate_before = shogun.staking.exchange_rate()?;
+    chain.wait_blocks(EPOCH_LENGTH)?;
     shogun.staking.rebase()?;
+
     let exchange_rate_after = shogun.staking.exchange_rate()?;
+
     assert!(exchange_rate_before < exchange_rate_after);
 
     Ok(())
@@ -368,56 +386,89 @@ fn no_stake_rebase() -> anyhow::Result<()> {
 }
 
 #[test]
-fn hop_before_rebase_test() -> anyhow::Result<()> {
+fn claim_before_warmup() -> anyhow::Result<()> {
     let (shogun, _bond_contract, _treasury) = init_bond()?;
 
-    let mut chain = shogun.staking.get_chain().clone();
+    let chain = shogun.staking.get_chain().clone();
 
-    chain.wait_seconds(EPOCH_LENGTH)?;
-    shogun.staking.rebase()?;
-
-    // We stake before for the recipient
-    let recipient = chain.init_account(vec![])?;
-    shogun.staking.stake(
-        recipient.address().to_string(),
-        &coins(10_000, shogun.staking.config()?.ohm_denom),
-    )?;
-
-    // We wait some time just before the epoch end
-    chain.wait_seconds(EPOCH_LENGTH - 10)?;
-
-    // We stake after for the sender
     shogun.staking.stake(
         chain.sender().to_string(),
         &coins(10_000, shogun.staking.config()?.ohm_denom),
     )?;
-
     // We rebase just there
+    chain.wait_seconds(EPOCH_LENGTH)?;
     shogun.staking.rebase()?;
+    chain.wait_seconds(EPOCH_LENGTH)?;
+    shogun.staking.rebase()?;
+
+    // We advance some blocks
+    chain.wait_seconds(WARMUP_LENGTH / 2)?;
+
+    // We claim, it should not give out shom
+    shogun.staking.claim(chain.sender().to_string())?;
 
     // The balance should not be equal for the 2 participants
     let config = shogun.staking.config()?;
+    assert_balance(
+        chain.clone(),
+        config.ohm_denom.clone(),
+        INITIAL_SHOGUN_BALANCE,
+        chain.sender().to_string(),
+    )?;
 
-    assert_ne!(
-        get_cw20_balance(
-            chain.clone(),
-            config.sohm_address.clone(),
-            chain.sender().to_string(),
-        )?,
-        get_cw20_balance(
-            chain.clone(),
-            config.sohm_address,
-            recipient.address().to_string(),
-        )?
-    );
+    assert_cw20_balance(
+        chain.clone(),
+        config.sohm_address.clone(),
+        0,
+        chain.sender().to_string(),
+    )?;
 
     Ok(())
 }
 
+const STAKE_LENGTH: u128 = 6_000;
+const FIRST_STAKE: u128 = 10_000;
+const SECOND_STAKE: u128 = 5_000;
+const UNSTAKE: u128 = 1_000;
 #[test]
 fn points_increase_and_stop() -> anyhow::Result<()> {
     let (shogun, _bond_contract, _treasury) = init_bond()?;
     let chain = shogun.staking.get_chain().clone();
+    shogun
+        .staking
+        .raw_staking_points(chain.sender().to_string())
+        .unwrap_err();
+    assert_eq!(
+        shogun.staking.staking_points(chain.sender().to_string())?,
+        StakingPoints {
+            total_points: Uint128::zero(),
+            last_points_updated: chain.block_info()?.time
+        }
+    );
+
+    stake_and_claim(&shogun, FIRST_STAKE, None)?;
+
+    assert_eq!(
+        shogun
+            .staking
+            .raw_staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::zero(),
+            last_points_updated: chain.block_info()?.time
+        }
+    );
+
+    chain.wait_seconds(STAKE_LENGTH as u64)?;
+
+    assert_eq!(
+        shogun.staking.staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::from(FIRST_STAKE * STAKE_LENGTH),
+            last_points_updated: chain.block_info()?.time
+        }
+    );
+
+    unstake(&shogun, UNSTAKE, None)?;
 
     assert_eq!(
         shogun
@@ -435,64 +486,31 @@ fn points_increase_and_stop() -> anyhow::Result<()> {
             last_points_updated: chain.block_info()?.time
         }
     );
+    chain.wait_seconds(STAKE_LENGTH as u64)?;
+    stake_and_claim(&shogun, SECOND_STAKE, None)?;
 
-    shogun.staking.stake(
-        chain.sender().to_string(),
-        &coins(10_000, shogun.staking.config()?.ohm_denom),
-    )?;
-
+    // STAKE_LENGTH because we wait stake_length before depositing
+    // WARMUP_LENGTH because we wait for the warmup before depositing
+    // +2 because we have 2 transactions (stake + claim)
     assert_eq!(
         shogun
             .staking
             .raw_staking_points(chain.sender().to_string(),)?,
         StakingPoints {
-            total_points: Uint128::zero(),
+            total_points: Uint128::from(
+                (FIRST_STAKE - UNSTAKE) * (STAKE_LENGTH + 2 + WARMUP_LENGTH as u128)
+            ),
             last_points_updated: chain.block_info()?.time
         }
     );
+    chain.wait_seconds(STAKE_LENGTH as u64)?;
     assert_eq!(
         shogun.staking.staking_points(chain.sender().to_string(),)?,
         StakingPoints {
-            total_points: Uint128::one(),
-            last_points_updated: chain.block_info()?.time
-        }
-    );
-
-    unstake(&shogun, 1_000, None)?;
-
-    assert_eq!(
-        shogun
-            .staking
-            .raw_staking_points(chain.sender().to_string(),)?,
-        StakingPoints {
-            total_points: Uint128::zero(),
-            last_points_updated: chain.block_info()?.time
-        }
-    );
-    assert_eq!(
-        shogun.staking.staking_points(chain.sender().to_string(),)?,
-        StakingPoints {
-            total_points: Uint128::one(),
-            last_points_updated: chain.block_info()?.time
-        }
-    );
-    shogun.staking.stake(
-        chain.sender().to_string(),
-        &coins(10_000, shogun.staking.config()?.ohm_denom),
-    )?;
-    assert_eq!(
-        shogun
-            .staking
-            .raw_staking_points(chain.sender().to_string(),)?,
-        StakingPoints {
-            total_points: Uint128::one(),
-            last_points_updated: chain.block_info()?.time
-        }
-    );
-    assert_eq!(
-        shogun.staking.staking_points(chain.sender().to_string(),)?,
-        StakingPoints {
-            total_points: Uint128::one() + Uint128::one(),
+            total_points: Uint128::from(
+                (FIRST_STAKE - UNSTAKE) * (STAKE_LENGTH + 2 + WARMUP_LENGTH as u128)
+                    + (FIRST_STAKE - UNSTAKE + SECOND_STAKE) * STAKE_LENGTH
+            ),
             last_points_updated: chain.block_info()?.time
         }
     );

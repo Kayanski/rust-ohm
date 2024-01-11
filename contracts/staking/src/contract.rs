@@ -122,12 +122,12 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         QueryMsg::ExchangeRate {} => Ok(to_json_binary(&query_exchange_rate(deps, env)?)?),
         QueryMsg::Bonds {} => Ok(to_json_binary(&bond_contracts(deps)?)?),
         QueryMsg::EpochState {} => Ok(to_json_binary(&EPOCH_STATE.load(deps.storage)?)?),
-        QueryMsg::StakingPoints { address } => {
+        QueryMsg::StakingPoints { address } => Ok(to_json_binary(&query_current_staking_points(
+            deps, env, address,
+        )?)?),
+        QueryMsg::RawStakingPoints { address } => {
             Ok(to_json_binary(&query_raw_staking_points(deps, address)?)?)
         }
-        QueryMsg::RawStakingPoints { address } => Ok(to_json_binary(
-            &query_current_staking_points(deps, env, address)?,
-        )?),
     }
 }
 pub const INSTANTIATE_STAKING_TOKEN_REPLY: u64 = 1;
