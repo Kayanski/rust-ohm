@@ -34,6 +34,8 @@ pub fn main() -> anyhow::Result<()> {
         fee_token: "inj".to_string(),
         staking_symbol: "sSHGN".to_string(),
         staking_name: "sSHOGUN".to_string(),
+        warmup_length: 50,
+        cw1_code_id: 5,
     })?;
 
     Ok(())

@@ -32,6 +32,7 @@ serde = "1.0.193"
 bond = { path = ".", features = ["interface"] }
 test-fuzz = "3.1.0"
 tests = { path = "../../tests" }
+cw-plus-interface = { git = "https://github.com/abstractsdk/cw-plus" }
 
 # Backup release profile, will result in warnings during optimization
 [profile.release]

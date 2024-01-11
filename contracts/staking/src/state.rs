@@ -1,6 +1,3 @@
-// use `cw_storage_plus` to create ORM-like interface to storage
-// see: https://crates.io/crates/cw-storage-plus
-
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal256, Deps, DepsMut, Env, Order, Timestamp, Uint128};
 use cw_storage_plus::{Item, Map};
@@ -14,7 +11,7 @@ use crate::{
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const EPOCH_STATE: Item<EpochState> = Item::new("epoch_state");
 pub const BOND_CONTRACT_INFO: Map<&Addr, BondContractInfo> = Map::new("minter_info");
-
+pub const WARMUP: Map<&Addr, Warmup> = Map::new("warmup_info");
 pub const STAKING_POINTS: Map<&Addr, StakingPoints> = Map::new("staking_points");
 
 pub const BASE_TOKEN_DENOM: &str = "base_token";
@@ -26,6 +23,8 @@ pub struct Config {
     pub next_epoch_apr: Option<Decimal256>,
     pub admin: Addr,
     pub staking_denom_address: Option<Addr>,
+    pub warmup_address: Option<Addr>,
+    pub warmup_length: u64,
 }
 #[cw_serde]
 pub struct EpochState {
@@ -42,9 +41,15 @@ pub struct BondContractInfo {
 
 #[cw_serde]
 pub struct StakingPoints {
-    pub jailed: bool,
     pub total_points: Uint128,
-    pub last_points_updated: u64,
+    pub last_points_updated: Timestamp,
+}
+
+#[cw_serde]
+pub struct Warmup {
+    pub amount: Uint128,
+    pub end: Timestamp,
+    pub mint_amount: Uint128,
 }
 
 pub fn bond_contracts(deps: Deps) -> Result<BondContractsResponse, ContractError> {
@@ -89,18 +94,16 @@ pub fn staking_points_update_closure(
 ) -> Result<StakingPoints, ContractError> {
     match staking_points {
         None => Ok(StakingPoints {
-            jailed: false,
             total_points: Uint128::zero(),
-            last_points_updated: env.block.height,
+            last_points_updated: env.block.time,
         }),
         Some(mut staking_points) => {
-            if !staking_points.jailed {
-                let blocks = env.block.height - staking_points.last_points_updated;
-                let new_points = current_stake * Uint128::from(blocks);
+            let time_delta =
+                env.block.time.seconds() - staking_points.last_points_updated.seconds();
+            let new_points = current_stake * Uint128::from(time_delta);
 
-                staking_points.total_points += new_points;
-                staking_points.last_points_updated = env.block.height;
-            }
+            staking_points.total_points += new_points;
+            staking_points.last_points_updated = env.block.time;
             Ok(staking_points)
         }
     }

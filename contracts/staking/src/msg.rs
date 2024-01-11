@@ -11,19 +11,24 @@ pub struct InstantiateMsg {
     pub epoch_apr: Decimal256,
     pub first_epoch_time: u64,
     pub initial_balances: Vec<(String, Uint128)>,
+    pub warmup_length: u64,
 }
 
 /// Message type for `execute` entry_point
 #[cw_serde]
 #[cfg_attr(feature = "interface", derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
-    InstantiateStakingToken {
+    InstantiateContracts {
         staking_token_code_id: u64,
+        cw1_code_id: u64,
         staking_symbol: String,
         staking_name: String,
     },
     #[cfg_attr(feature = "interface", payable)]
     Stake {
+        to: String,
+    },
+    Claim {
         to: String,
     },
     #[cfg_attr(feature = "interface", payable)]
@@ -76,6 +81,8 @@ pub struct ConfigResponse {
     pub admin: String,
     pub ohm_denom: String,
     pub sohm_address: String,
+    pub warmup_length: u64,
+    pub warmup_address: String,
 }
 
 #[cw_serde]

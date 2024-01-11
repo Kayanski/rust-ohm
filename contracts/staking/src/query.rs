@@ -4,8 +4,7 @@ use cw20::TokenInfoResponse;
 use crate::{
     msg::ConfigResponse,
     state::{
-        staking_points_update_closure, StakingPoints, BASE_TOKEN_DENOM, CONFIG, EPOCH_STATE,
-        STAKING_POINTS,
+        staking_points_update_closure, StakingPoints, BASE_TOKEN_DENOM, CONFIG, STAKING_POINTS,
     },
     ContractError,
 };
@@ -76,27 +75,6 @@ pub fn current_exchange_rate(
     }
 }
 
-pub fn expected_exchange_rate(
-    deps: Deps,
-    env: &Env,
-    deposit: Option<Uint128>,
-) -> Result<Decimal256, ContractError> {
-    let current_exchange_rate = current_exchange_rate(deps, env, deposit)?;
-    let config = CONFIG.load(deps.storage)?;
-    let epoch_state = EPOCH_STATE.load(deps.storage)?;
-
-    let blocks_since_epoch = if env.block.time.seconds() >= epoch_state.epoch_start.seconds() {
-        env.block.time.seconds() - epoch_state.epoch_start.seconds()
-    } else {
-        0u64
-    };
-
-    let lost_exchange_rate =
-        config.epoch_apr * Decimal256::from_ratio(blocks_since_epoch, config.epoch_length);
-
-    Ok(current_exchange_rate * (Decimal256::one() + lost_exchange_rate))
-}
-
 pub fn query_config(deps: Deps, env: Env) -> Result<ConfigResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
@@ -107,6 +85,8 @@ pub fn query_config(deps: Deps, env: Env) -> Result<ConfigResponse, ContractErro
         admin: config.admin.to_string(),
         ohm_denom: base_denom(&env),
         sohm_address: staking_token_addr(deps)?.to_string(),
+        warmup_length: config.warmup_length,
+        warmup_address: config.warmup_address.unwrap().to_string(),
     })
 }
 

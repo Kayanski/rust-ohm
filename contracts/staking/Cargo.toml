@@ -24,10 +24,12 @@ prost = "0.12.3"
 cw-orch = { workspace = true, optional = true }
 injective-std = { workspace = true }
 protobuf = { version = "2", features = ["with-bytes"] }
+cw1-whitelist = "1.1.2"
 
 [dev-dependencies]
 anyhow = { version = "1.0.75", features = ["backtrace"] }
 cw-orch = { workspace = true, features = ["injective-test-tube", "eth"] }
+cw-plus-interface = { git = "https://github.com/abstractsdk/cw-plus" }
 serde = "1.0.193"
 staking-contract = { path = ".", features = ["interface"] }
 staking-token = { workspace = true, features = ["interface", "library"] }

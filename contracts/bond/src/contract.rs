@@ -194,14 +194,14 @@ pub mod test {
     use bond::interface::Bond;
     use bond::msg::ExecuteMsgFns as _;
     use bond::msg::QueryMsgFns;
+    use bond::state::Terms;
     use cw_orch::injective_test_tube::injective_test_tube::Account;
+    use cw_plus_interface::cw1_whitelist::Cw1Whitelist;
     use staking_contract::msg::QueryMsgFns as _;
     use tests::deploy::upload::BondConfig;
     use tests::deploy::upload::Shogun;
     use tests::deploy::upload::ShogunDeployment;
     use tests::tokenfactory::assert_balance;
-
-    use bond::state::Terms;
 
     pub const AMOUNT_TO_CREATE_DENOM: u128 = 10_000_000_000_000_000_000u128;
     pub const FUNDS_MULTIPLIER: u128 = 100_000;
@@ -222,6 +222,9 @@ pub mod test {
 
         let treasury = chain.init_account(vec![])?;
 
+        let cw1 = Cw1Whitelist::new("cw1-whitelist", chain.clone());
+        cw1.upload()?;
+
         let mut shogun = Shogun::deploy_on(
             chain.clone(),
             ShogunDeployment {
@@ -233,6 +236,8 @@ pub mod test {
                 fee_token: "inj".to_string(),
                 staking_symbol: "sSHGN".to_string(),
                 staking_name: "sSHOGUN".to_string(),
+                warmup_length: 50,
+                cw1_code_id: cw1.code_id()?,
             },
         )?;
 

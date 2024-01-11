@@ -130,6 +130,7 @@ impl<Chain: CwEnv> Shogun<Chain> {
                     .into_iter()
                     .map(|(recipient, amount)| (recipient, amount.into()))
                     .collect(),
+                warmup_length: deploy_data.warmup_length,
             },
             None,
             Some(&coins(
@@ -138,7 +139,8 @@ impl<Chain: CwEnv> Shogun<Chain> {
             )),
         )?;
 
-        self.staking.instantiate_staking_token(
+        self.staking.instantiate_contracts(
+            deploy_data.cw1_code_id,
             deploy_data.staking_symbol,
             deploy_data.staking_name,
             self.staking_token.code_id()?,
@@ -208,6 +210,8 @@ pub struct ShogunDeployment {
     pub fee_token: String,
     pub staking_symbol: String,
     pub staking_name: String,
+    pub warmup_length: u64,
+    pub cw1_code_id: u64,
 }
 
 #[cw_serde]

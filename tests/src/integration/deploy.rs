@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::str::FromStr;
 
+use super::unstake;
 use crate::deploy::upload::BondConfig;
 use crate::integration::test_constants::bond_terms_1::VESTING_TERM;
 use crate::integration::test_constants::*;
@@ -16,20 +17,26 @@ use bond::msg::ExecuteMsgFns as _;
 use bond::msg::QueryMsgFns as _;
 use bond::state::Adjustment;
 use bond::state::Terms;
-use cosmwasm_std::{coins, Decimal256, Timestamp};
+use cosmwasm_std::{coins, Decimal256, Timestamp, Uint128};
 use cw_orch::injective_test_tube::injective_test_tube::{Account, SigningAccount};
 use cw_orch::injective_test_tube::InjectiveTestTube;
 use cw_orch::{
     contract::interface_traits::ContractInstance, deploy::Deploy, environment::TxHandler,
+    prelude::*,
 };
+use cw_plus_interface::cw1_whitelist::Cw1Whitelist;
 use staking_contract::msg::BondContractsElem;
 use staking_contract::msg::ExecuteMsgFns as _;
 use staking_contract::msg::QueryMsgFns as _;
+use staking_contract::state::StakingPoints;
 
-use super::unstake;
+pub const WARMUP_LENGTH: u64 = 50;
 
 pub fn init() -> anyhow::Result<Shogun<InjectiveTestTube>> {
     let chain = test_tube();
+
+    let cw1 = Cw1Whitelist::new("cw1-whitelist", chain.clone());
+    cw1.upload()?;
 
     let shogun = Shogun::deploy_on(
         chain.clone(),
@@ -42,6 +49,8 @@ pub fn init() -> anyhow::Result<Shogun<InjectiveTestTube>> {
             fee_token: "inj".to_string(),
             staking_symbol: "sSHGN".to_string(),
             staking_name: "sSHOGUN".to_string(),
+            warmup_length: WARMUP_LENGTH,
+            cw1_code_id: cw1.code_id()?,
         },
     )?;
 
@@ -102,6 +111,8 @@ fn deploy_check() -> anyhow::Result<()> {
             epoch_length: EPOCH_LENGTH,
             ohm_denom: shogun.staking.config()?.ohm_denom,
             sohm_address: shogun.staking.config()?.sohm_address,
+            warmup_address: shogun.staking.config()?.warmup_address,
+            warmup_length: WARMUP_LENGTH
         }
     );
 
@@ -197,6 +208,8 @@ fn modify_staking_config() -> anyhow::Result<()> {
             epoch_length: new_epoch_length,
             ohm_denom: shogun.staking.config()?.ohm_denom,
             sohm_address: shogun.staking.config()?.sohm_address,
+            warmup_address: shogun.staking.config()?.warmup_address,
+            warmup_length: WARMUP_LENGTH
         }
     );
 
@@ -402,100 +415,86 @@ fn hop_before_rebase_test() -> anyhow::Result<()> {
 }
 
 #[test]
-fn jail_stays() -> anyhow::Result<()> {
+fn points_increase_and_stop() -> anyhow::Result<()> {
     let (shogun, _bond_contract, _treasury) = init_bond()?;
     let chain = shogun.staking.get_chain().clone();
 
-    shogun.staking.stake(
-        chain.sender().to_string(),
-        &coins(10_000, shogun.staking.config()?.ohm_denom),
-    )?;
-
-    assert!(
-        !shogun
-            .staking
-            .raw_staking_points(chain.sender().to_string(),)?
-            .jailed
-    );
-    assert!(
-        !shogun
-            .staking
-            .staking_points(chain.sender().to_string(),)?
-            .jailed
-    );
-
-    unstake(&shogun, 10_000, None)?;
-
-    assert!(
+    assert_eq!(
         shogun
             .staking
-            .raw_staking_points(chain.sender().to_string(),)?
-            .jailed
+            .raw_staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::zero(),
+            last_points_updated: chain.block_info()?.time
+        }
     );
-    assert!(
-        shogun
-            .staking
-            .staking_points(chain.sender().to_string(),)?
-            .jailed
+    assert_eq!(
+        shogun.staking.staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::zero(),
+            last_points_updated: chain.block_info()?.time
+        }
     );
-    shogun.staking.stake(
-        chain.sender().to_string(),
-        &coins(10_000, shogun.staking.config()?.ohm_denom),
-    )?;
-    assert!(
-        shogun
-            .staking
-            .raw_staking_points(chain.sender().to_string(),)?
-            .jailed
-    );
-    assert!(
-        shogun
-            .staking
-            .staking_points(chain.sender().to_string(),)?
-            .jailed
-    );
-
-    Ok(())
-}
-
-#[test]
-fn jail_does_not_pop() -> anyhow::Result<()> {
-    let (shogun, _bond_contract, _treasury) = init_bond()?;
-    let chain = shogun.staking.get_chain().clone();
 
     shogun.staking.stake(
         chain.sender().to_string(),
         &coins(10_000, shogun.staking.config()?.ohm_denom),
     )?;
 
-    assert!(
-        !shogun
+    assert_eq!(
+        shogun
             .staking
-            .raw_staking_points(chain.sender().to_string(),)?
-            .jailed
+            .raw_staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::zero(),
+            last_points_updated: chain.block_info()?.time
+        }
     );
-    assert!(
-        !shogun
-            .staking
-            .staking_points(chain.sender().to_string(),)?
-            .jailed
+    assert_eq!(
+        shogun.staking.staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::one(),
+            last_points_updated: chain.block_info()?.time
+        }
     );
 
+    unstake(&shogun, 1_000, None)?;
+
+    assert_eq!(
+        shogun
+            .staking
+            .raw_staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::zero(),
+            last_points_updated: chain.block_info()?.time
+        }
+    );
+    assert_eq!(
+        shogun.staking.staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::one(),
+            last_points_updated: chain.block_info()?.time
+        }
+    );
     shogun.staking.stake(
         chain.sender().to_string(),
         &coins(10_000, shogun.staking.config()?.ohm_denom),
     )?;
-    assert!(
-        !shogun
+    assert_eq!(
+        shogun
             .staking
-            .raw_staking_points(chain.sender().to_string(),)?
-            .jailed
+            .raw_staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::one(),
+            last_points_updated: chain.block_info()?.time
+        }
     );
-    assert!(
-        !shogun
-            .staking
-            .staking_points(chain.sender().to_string(),)?
-            .jailed
+    assert_eq!(
+        shogun.staking.staking_points(chain.sender().to_string(),)?,
+        StakingPoints {
+            total_points: Uint128::one() + Uint128::one(),
+            last_points_updated: chain.block_info()?.time
+        }
     );
 
     Ok(())

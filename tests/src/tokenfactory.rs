@@ -76,7 +76,7 @@ where
 {
     let current_balance = chain.balance(address, Some(denom))?;
     let balance = current_balance
-        .get(0)
+        .first()
         .ok_or(anyhow::format_err!("No balance of this coin registered"))?;
 
     if balance.amount.u128() != amount {

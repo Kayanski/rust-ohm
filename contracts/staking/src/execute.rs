@@ -1,21 +1,18 @@
 use cosmos_sdk_proto::traits::Message;
 use cosmwasm_std::{
-    to_json_binary, BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, MessageInfo, Response,
-    StdError, SubMsg, Uint128, Uint256,
+    coins, to_json_binary, BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Empty, Env, MessageInfo,
+    Response, StdError, SubMsg, Uint128, Uint256,
 };
 use cw20::MinterResponse;
 use injective_std::types::injective::tokenfactory::v1beta1::MsgMint;
 
 use crate::{
-    contract::INSTANTIATE_CONTRACT_REPLY,
+    contract::{INSTANTIATE_ADMIN_CONTRACT_REPLY, INSTANTIATE_STAKING_TOKEN_REPLY},
     helpers::{deposit_one_coin, mint_msgs},
-    query::{
-        base_denom, current_exchange_rate, expected_exchange_rate, staking_token_addr,
-        token_balance,
-    },
+    query::{base_denom, current_exchange_rate, staking_token_addr, token_balance},
     state::{
-        update_staking_points, StakingPoints, BOND_CONTRACT_INFO, CONFIG, EPOCH_STATE,
-        STAKING_POINTS,
+        update_staking_points, StakingPoints, Warmup, BOND_CONTRACT_INFO, CONFIG, EPOCH_STATE,
+        STAKING_POINTS, WARMUP,
     },
     ContractError,
 };
@@ -69,33 +66,97 @@ pub fn rebase(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response, C
     Ok(Response::new().add_messages(msg))
 }
 
-pub fn stake(
-    mut deps: DepsMut,
+pub fn execute_stake(
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     to: String,
 ) -> Result<Response, ContractError> {
     let deposited_amount = deposit_one_coin(info, base_denom(&env))?;
+    let config = CONFIG.load(deps.storage)?;
 
-    // We correct the exchange rate to avoid people sniping the rebase rate
-    let exchange_rate = expected_exchange_rate(deps.as_ref(), &env, Some(deposited_amount))?;
-
+    let exchange_rate = current_exchange_rate(deps.as_ref(), &env, Some(deposited_amount))?;
     let mint_amount =
         (Decimal256::from_ratio(deposited_amount, 1u128) / exchange_rate) * Uint256::one();
 
     let to_addr = deps.api.addr_validate(&to)?;
-    update_staking_points(deps.branch(), env, &to_addr, mint_amount.try_into()?)?;
-    // We mint some sOHM to the to address
-    let mint_msg = CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
-        contract_addr: staking_token_addr(deps.as_ref())?.to_string(),
-        msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Mint {
-            recipient: to,
-            amount: mint_amount.try_into()?,
-        })?,
-        funds: vec![],
+    // Add to current user Warmup
+    WARMUP.update(deps.storage, &to_addr, |w| match w {
+        None => Ok::<_, ContractError>(Warmup {
+            amount: deposited_amount,
+            mint_amount: mint_amount.try_into()?,
+            end: env.block.time.plus_seconds(config.warmup_length),
+        }),
+        Some(mut w) => {
+            w.amount += deposited_amount;
+            w.mint_amount += Uint128::try_from(mint_amount)?;
+            w.end = env.block.time.plus_seconds(config.warmup_length);
+            Ok(w)
+        }
+    })?;
+
+    // We send the deposited_asset into the warmup contract
+    let msg = CosmosMsg::Bank(BankMsg::Send {
+        to_address: config.warmup_address.unwrap().to_string(),
+        amount: vec![Coin {
+            amount: deposited_amount,
+            denom: base_denom(&env),
+        }],
     });
 
-    Ok(Response::new().add_message(mint_msg))
+    Ok(Response::new().add_message(msg))
+}
+
+pub fn execute_claim(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    to: String,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    // We transfer coins from the warmup contract to us
+    let claim = WARMUP.load(deps.storage, &info.sender)?;
+    WARMUP.remove(deps.storage, &info.sender);
+
+    let msgs = if claim.end > env.block.time {
+        // We send the ohm back to the sender
+        vec![CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+            contract_addr: config.warmup_address.unwrap().to_string(),
+            msg: to_json_binary(&cw1_whitelist::msg::ExecuteMsg::Execute {
+                msgs: vec![CosmosMsg::Bank::<Empty>(BankMsg::Send {
+                    to_address: to,
+                    amount: coins(claim.amount.u128(), base_denom(&env)),
+                })],
+            })?,
+            funds: vec![],
+        })]
+    } else {
+        let to_addr = deps.api.addr_validate(&to)?;
+        update_staking_points(deps.branch(), env.clone(), &to_addr, claim.mint_amount)?;
+        // We mint some sOHM to the to address
+        vec![
+            CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr: config.warmup_address.unwrap().to_string(),
+                msg: to_json_binary(&cw1_whitelist::msg::ExecuteMsg::Execute {
+                    msgs: vec![CosmosMsg::Bank::<Empty>(BankMsg::Send {
+                        to_address: env.contract.address.to_string(),
+                        amount: coins(claim.amount.u128(), base_denom(&env)),
+                    })],
+                })?,
+                funds: vec![],
+            }),
+            CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr: staking_token_addr(deps.as_ref())?.to_string(),
+                msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Mint {
+                    recipient: to,
+                    amount: claim.mint_amount,
+                })?,
+                funds: vec![],
+            }),
+        ]
+    };
+
+    Ok(Response::new().add_messages(msgs))
 }
 
 pub fn unstake(
@@ -112,12 +173,12 @@ pub fn unstake(
     // We update the staking points
     STAKING_POINTS.update(deps.storage, &info.sender, |points| match points {
         None => Ok::<_, StdError>(StakingPoints {
-            jailed: true,
             total_points: Uint128::zero(),
-            last_points_updated: 0,
+            last_points_updated: env.block.time,
         }),
         Some(mut staking_points) => {
-            staking_points.jailed = true;
+            staking_points.last_points_updated = env.block.time;
+            staking_points.total_points = Uint128::zero();
             Ok(staking_points)
         }
     })?;
@@ -172,6 +233,7 @@ pub fn instantiate_staking_token(
     staking_token_code_id: u64,
     staking_symbol: String,
     staking_name: String,
+    cw1_code_id: u64,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
@@ -200,8 +262,24 @@ pub fn instantiate_staking_token(
             funds: vec![],
             label: "Staking token".to_string(),
         }),
-        INSTANTIATE_CONTRACT_REPLY,
+        INSTANTIATE_STAKING_TOKEN_REPLY,
     );
 
-    Ok(Response::new().add_submessage(staked_currency_msg))
+    let cw1_instantiate_msg = SubMsg::reply_on_success(
+        CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Instantiate {
+            admin: Some(env.contract.address.to_string()),
+            code_id: cw1_code_id,
+            msg: to_json_binary(&cw1_whitelist::msg::InstantiateMsg {
+                admins: vec![env.contract.address.to_string()],
+                mutable: false,
+            })?,
+            funds: vec![],
+            label: "Warmup contract".to_string(),
+        }),
+        INSTANTIATE_ADMIN_CONTRACT_REPLY,
+    );
+
+    Ok(Response::new()
+        .add_submessage(staked_currency_msg)
+        .add_submessage(cw1_instantiate_msg))
 }
